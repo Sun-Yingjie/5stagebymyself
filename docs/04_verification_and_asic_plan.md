@@ -40,7 +40,7 @@
 | `rv32_decoder` | 指令到语义控制的映射、源寄存器使用标记、非法编码 |
 | `rv32_alu` | 算术、逻辑、移位以及 signed/unsigned 行为 |
 | `rv32_branch_compare` | 六类条件分支的有符号和无符号比较 |
-| `rv32_regfile` | 双读单写、`x0` 恒零、WB 写入和同周期旁路 |
+| `rv32_regfile` | 双读单写、`x0` 恒零和同步写入；WB→ID 同周期旁路在 `rv32_idu` 中验证 |
 | `rv32_forward_unit` | 两级前递优先级、`x0` 排除、load-use 检测 |
 | `rv32_pipeline_ctrl` | 每种事件对应的 `LOAD/HOLD/CLEAR` 动作和优先级 |
 | `rv32_lsu` 局部功能 | load 扩展、store 数据移位、`wstrb` 和地址低位处理 |
