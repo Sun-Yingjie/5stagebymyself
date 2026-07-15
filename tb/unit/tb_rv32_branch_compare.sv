@@ -1,4 +1,4 @@
-module tb_rv32_branch_comparesv;
+module tb_rv32_branch_compare;
     timeunit 1ns;
     timeprecision 1ps;
 
@@ -18,7 +18,7 @@ module tb_rv32_branch_comparesv;
     );
 
     initial begin
-        
+        error_count = 0;
         operand_a = 0;
         operand_b = 0;
         branch_operation = BR_NONE;
@@ -31,6 +31,78 @@ module tb_rv32_branch_comparesv;
             "BR_NONE"
         );
 
+        check_branch(
+            BR_EQ,
+            32'h0000_0005,
+            32'h0000_0005,
+            1'b1,
+            "BEQ equal"
+        );
+
+        check_branch(
+            BR_EQ,
+            32'h0000_0005,
+            32'h0000_0006,
+            1'b0,
+            "BEQ not equal"
+        );
+
+        check_branch(
+            BR_NE,
+            32'h0000_0005,
+            32'h0000_0005,
+            1'b0,
+            "BNE equal"
+        );
+
+        check_branch(
+            BR_NE,
+            32'h0000_0005,
+            32'h0000_0006,
+            1'b1,
+            "BNE not equal"
+        );
+
+        check_branch(
+            BR_LT,
+            32'hffff_ffff,
+            32'h0000_0001,
+            1'b1,
+            "BLT signed negative"
+        );
+
+        check_branch(
+            BR_GE,
+            32'h0000_0005,
+            32'h0000_0005,
+            1'b1,
+            "BGE equal"
+        );
+
+        check_branch(
+            BR_GE,
+            32'hffff_ffff,
+            32'h0000_0001,
+            1'b0,
+            "BGE signed negative"
+        );
+
+        check_branch(
+            BR_LTU,
+            32'hffff_ffff,
+            32'h0000_0001,
+            1'b0,
+            "BLTU unsigned maximum"
+        );
+
+        check_branch(
+            BR_GEU,
+            32'hffff_ffff,
+            32'h0000_0001,
+            1'b1,
+            "BGEU unsigned maximum"
+        );
+
         if (error_count != 0) begin
             $fatal(
                 1,
@@ -38,21 +110,21 @@ module tb_rv32_branch_comparesv;
                 error_count
             );
         end
-        $$display("[PASS] rv32_branch_compare: all tests passed");
+        $display("[PASS] rv32_branch_compare: all tests passed");
         $finish;
     end
 
     task automatic check_branch(
         input branch_operation_e    operation_value,
-        input logic                 operand_a_value,
-        input logic                 operand_b_value,
+        input logic [31:0]          operand_a_value,
+        input logic [31:0]          operand_b_value,
         input logic                 expected_value,
         input string                case_name
     );
         begin
-            operand_a = operation_value;
-            operand_b = operand_a_value;
-            branch_operation = operand_b_value;
+            branch_operation = operation_value;
+            operand_a = operand_a_value;
+            operand_b = operand_b_value;
             
             #1ns;
 
