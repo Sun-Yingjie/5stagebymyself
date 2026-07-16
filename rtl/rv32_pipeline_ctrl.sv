@@ -19,7 +19,6 @@ module rv32_pipeline_ctrl (
     import rv32_pkg::*;
 
     always_comb begin
-        // 默认情况：前端有新指令，所有流水级正常前进
         fetch_action    = FETCH_SEQUENTIAL;
         if_id_action    = PIPE_LOAD;
         id_ex_action    = PIPE_LOAD;

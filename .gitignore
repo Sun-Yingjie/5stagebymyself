@@ -1,0 +1,75 @@
+# macOS / editor noise
+.DS_Store
+._*
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Simulator outputs
+*.vcd
+*.vpd
+*.fsdb
+*.fst
+*.wlf
+*.lxt
+*.lxt2
+*.vvp
+simv
+simv.daidir/
+csrc/
+ucli.key
+vc_hdrs.h
+dump.fsdb
+dump.vcd
+
+# Build / run directories
+build/
+out/
+work/
+worklib/
+INCA_libs/
+xcelium.d/
+verilator/
+obj_dir/
+
+# Synopsys / ASIC flow generated files
+*.ddc
+*.db
+*.sdf
+*.spef
+*.sdc.out
+*.svf
+*.mr
+*.pvl
+*.syn
+*.rep
+*.rpt
+command.log
+default.svf
+alib-52/
+analyzed/
+unmapped/
+mapped/
+
+# Generated artifacts under project output folders
+waves/*
+!waves/.gitkeep
+reports/*
+!reports/.gitkeep
+
+# Generated binaries and memory images
+*.elf
+*.bin
+*.hex
+*.mem
+*.dump
+*.dis
