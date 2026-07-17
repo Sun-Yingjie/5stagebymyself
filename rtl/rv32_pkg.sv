@@ -43,6 +43,8 @@ package rv32_pkg;
 // exception
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
     localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION      = 32'd2;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT        = 32'd5;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT       = 32'd7;
 // pipeline control
     typedef enum logic [1:0] {  // how to update pipeline reg
         PIPE_LOAD           = 2'b00, // update
