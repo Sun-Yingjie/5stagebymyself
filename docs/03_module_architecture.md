@@ -126,7 +126,7 @@ uses_rs1
 
 ### 3.8 `rv32_csr_trap`
 
-v0.2 加入，拥有 `mstatus`、`mtvec`、`mepc`、`mcause` 和 `mtval` 等 Machine Mode 架构状态。它接收 MEM 中的 CSR 语义访问和已经合并完成的最老异常，完成访问检查、CSR 状态更新，并产生：
+v0.2 加入，拥有 `mstatus`、`misa`、`mtvec`、`mscratch`、`mepc`、`mcause`、`mtval` 和只读 identity CSR。精确地址、reset、字段掩码和 WARL/MRO 行为由 [Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 冻结。它接收 MEM 中的 CSR 语义访问和已经合并完成的最老异常，完成访问检查、CSR 状态更新，并产生：
 
 - 只持续一个周期的 `trap_take`；
 - 指向 trap handler 的 `trap_redirect`；
@@ -594,6 +594,9 @@ redirect_commit
 `redirect_commit` 表示普通 EX redirect 获准提交；`trap_take` 使用事件优先级中的独立 trap 路径。core 根据被选中的事件和对应目标产生唯一 `qualified_redirect`。
 
 ### 9.7 CSR/trap
+
+本节定义模块间信息方向；具体 CSR 集合和位级行为以
+[Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 为准。
 
 输入：
 

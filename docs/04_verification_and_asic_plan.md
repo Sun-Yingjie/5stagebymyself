@@ -477,9 +477,12 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 3. 先加入无状态 CSR 读改写运算叶子及其单元测试；
 4. 独立加入 Zicsr 语义译码叶子并穷举六条指令与读写抑制规则，主 decoder 暂不把 CSR 合法化；
 5. 再把语义译码接入逐级承载字段、late-result hazard 与写回数据通路；
-6. 接入唯一 CSR 状态所有者、访问合法性检查和 MEM 最终异常合并，再完成最小 Machine Mode trap 状态、trap redirect 与 `mret`；
-7. 在同步异常闭环稳定后加入 RV32M 多周期单元；
-8. 最后独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
-9. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
+6. 冻结项目 v0.2 Machine CSR profile，再独立实现唯一 CSR/trap 状态所有者及其单元测试，主 decoder 仍保持 CSR illegal；
+7. 重构 LSU/core 的 MEM 结果组装边界，接入 CSR 合法性检查、最终异常合并和年轻 DMem 请求抑制；
+8. 最后激活六条 CSR 指令，完成 CSR late-result、连续访问、只读/未知地址和精确 trap 的 core 级 directed test；
+9. 同步异常闭环稳定后补 `MRET`，再加入 RV32M 多周期单元；
+10. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
+11. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源；
+12. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
 
 每个增量都遵循“先讲清架构行为和逐周期路径，再修改最小 RTL，再补定向测试与断言，最后跑全回归”的学习闭环。旧回归必须始终通过，不能依靠同时修改多个未验证模块来跨过中间失败状态。

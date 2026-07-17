@@ -127,6 +127,7 @@ Zicsr 语义叶子与指令数据通路
 - [流水线契约](docs/02_pipeline_contract.md)
 - [模块架构](docs/03_module_architecture.md)
 - [验证与 ASIC 计划](docs/04_verification_and_asic_plan.md)
+- [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md)
 - [v0.1 core 验证报告](docs/verification/rv32_core_verification_report.md)
 - [v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)
 - [SpyGlass baseline](docs/asic/spyglass_lint_rtl_baseline.md)
