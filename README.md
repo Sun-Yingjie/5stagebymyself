@@ -6,7 +6,8 @@
 
 当前冻结版本为 `v0.1-rtl-baseline`，它表示**功能 RTL 基线**，不表示完整 RV32I 认证或 ASIC signoff 完成。
 
-- 37 条 RV32I 程序子集；
+- 37 条原有整数指令和可正常退休的 `FENCE`；
+- `ECALL/EBREAK`、非法指令与地址异常元数据；
 - EX/MEM、MEM/WB 前递；
 - WB→ID 同周期旁路；
 - load-use bubble；
@@ -15,7 +16,8 @@
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Icarus 11/11 叶子 TB、Icarus/Verilator core 7/7 场景通过；
+- Zicsr 流水契约和无状态 CSR 运算叶子模块；
+- Icarus 12/12 叶子 TB、Icarus/Verilator core 7/7 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
 `HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前项目状态以本 README、[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)为准。
@@ -55,10 +57,10 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-11/11 unit TBs passed
+12/12 unit TBs passed
 Icarus core: 7/7 scenarios passed
 Verilator core: 7/7 scenarios passed
-98 retirements, 18 DMem requests, 1715 checks
+99 retirements, 18 DMem requests, 1733 checks
 ```
 
 如需保留到指定位置，可以设置：
@@ -98,7 +100,8 @@ waves/          阶段性波形落点
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
 - `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- 未实现 Zicsr、Machine Mode、interrupt 和 RV32M；
+- Zicsr 仅完成架构契约和无状态 CSR 运算叶子，尚未接入 decoder、流水与 CSR 状态；
+- 未实现 Machine Mode、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；
 - 未运行完整 ACT4、参考模型差分、VCS、DC、Formality 和 PrimeTime；
@@ -109,8 +112,7 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-RV32I 剩余编码与同步异常来源
-    → Zicsr
+Zicsr 语义叶子与指令数据通路
     → machine-mode-only 精确 trap 闭环
     → 迭代式 RV32M
     → 精确 Machine interrupt

@@ -117,6 +117,13 @@ package rv32_pkg;
         BR_GEU              = 3'b110
     } branch_operation_e;
 
+// CSR control
+    typedef enum logic [1:0] { // select CSR read-modify-write operation
+        CSR_WRITE           = 2'b00,
+        CSR_SET             = 2'b01,
+        CSR_CLEAR           = 2'b10
+    } csr_operation_e;
+
     typedef enum logic [1:0] { // sel rs source
         FWD_REG             = 2'b00, // from regfile
         FWD_EX_MEM          = 2'b01, // from ex/mem
