@@ -305,6 +305,31 @@ module tb_rv32_idu;
             "illegal instruction metadata"
         );
 
+        // ECALL and EBREAK are legal instructions that request distinct traps.
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0500;
+        if_id_q.instruction = INSTRUCTION_ECALL;
+        if_id_q.pc_plus_4   = 32'h0000_0504;
+
+        check_exception_state(
+            EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE,
+            32'b0,
+            "ECALL creates Machine environment-call metadata"
+        );
+
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0600;
+        if_id_q.instruction = INSTRUCTION_EBREAK;
+        if_id_q.pc_plus_4   = 32'h0000_0604;
+
+        check_exception_state(
+            EXCEPTION_CAUSE_BREAKPOINT,
+            32'b0,
+            "EBREAK creates breakpoint metadata"
+        );
+
         // An exception detected in IF poisons an otherwise legal instruction.
         if_id_q                   = '0;
         if_id_q.valid             = 1'b1;

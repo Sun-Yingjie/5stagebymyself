@@ -229,12 +229,14 @@ decode_ctrl_t:
     uses_rs2
     immediate_type
     illegal_instruction
+    environment_call
+    breakpoint
     ex_ctrl
     mem_ctrl
     wb_ctrl
 ```
 
-`immediate_type` 只用于 ID 生成立即数。进入 ID/EX 的是已经扩展完成的 `immediate`，不再携带立即数类型。
+`immediate_type` 只用于 ID 生成立即数。进入 ID/EX 的是已经扩展完成的 `immediate`，不再携带立即数类型。`environment_call` 和 `breakpoint` 也只在 ID 将合法的 `ECALL/EBREAK` 转换为异常元数据，不随普通控制字段继续传播。
 
 ### 7.3 异常数据包
 

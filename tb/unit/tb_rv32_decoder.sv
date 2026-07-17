@@ -41,6 +41,7 @@ module tb_rv32_decoder;
         test_store(FUNCT3_SW, MEM_SIZE_WORD, "SW");
 
         test_fence();
+        test_system_exceptions();
 
         test_op_imm(FUNCT3_ADD_SUB, FUNCT7_BASE,    ALU_ADD,  "ADDI");
         test_op_imm(FUNCT3_SLL,     FUNCT7_BASE,    ALU_SLL,  "SLLI");
@@ -154,6 +155,50 @@ module tb_rv32_decoder;
                 fence_instruction,
                 expected_ctrl,
                 "FENCE ignores reserved fm/pred/succ/rs1/rd fields"
+            );
+        end
+    endtask
+
+    task automatic test_system_exceptions;
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.environment_call = 1'b1;
+            check_decode(
+                INSTRUCTION_ECALL,
+                expected_ctrl,
+                "ECALL exception source"
+            );
+
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.breakpoint = 1'b1;
+            check_decode(
+                INSTRUCTION_EBREAK,
+                expected_ctrl,
+                "EBREAK exception source"
+            );
+
+            set_expected_defaults();
+            check_decode(
+                INSTRUCTION_ECALL | 32'h0000_0080,
+                expected_ctrl,
+                "ECALL with nonzero rd is illegal"
+            );
+            check_decode(
+                INSTRUCTION_ECALL | 32'h0000_8000,
+                expected_ctrl,
+                "ECALL with nonzero rs1 is illegal"
+            );
+            check_decode(
+                32'h3020_0073,
+                expected_ctrl,
+                "MRET remains illegal before Machine Mode"
+            );
+            check_decode(
+                32'h3000_1073,
+                expected_ctrl,
+                "CSR instruction remains illegal before Zicsr"
             );
         end
     endtask
