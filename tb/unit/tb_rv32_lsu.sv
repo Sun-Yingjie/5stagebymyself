@@ -166,8 +166,11 @@ module tb_rv32_lsu;
             ex_mem_candidate.mem_ctrl.memory_size  = memory_size;
             ex_mem_candidate.mem_ctrl.load_unsigned = load_unsigned;
             ex_mem_candidate.wb_ctrl.register_write = memory_read;
-            ex_mem_candidate.wb_ctrl.writeback_select =
-                memory_read ? WB_LOAD : WB_EXEC;
+            if (memory_read) begin
+                ex_mem_candidate.wb_ctrl.writeback_select = WB_LOAD;
+            end else begin
+                ex_mem_candidate.wb_ctrl.writeback_select = WB_EXEC;
+            end
         end
     endtask
 
