@@ -1,6 +1,6 @@
 # v0.2 Machine CSR Profile 与状态所有者契约
 
-> 状态：冻结契约；`rv32_csr_trap` 已完成独立单测并接入 core，Zicsr 主译码尚未激活。<br>
+> 状态：冻结契约；`rv32_csr_trap` 已完成独立单测并接入 core，六条 Zicsr 指令已进入主译码与端到端验收。<br>
 > 适用范围：RV32、`IALIGN=32`、单 hart、仅 M-mode。<br>
 > 规范基线：[Zicsr 2.0](https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html)、[Privileged Architecture 1.13 Machine-Level ISA](https://docs.riscv.org/reference/isa/v20260120/priv/machine.html) 和 [CSR address map](https://docs.riscv.org/reference/isa/v20260120/priv/priv-csrs.html)。
 
@@ -14,9 +14,9 @@
 4. 哪些访问必须产生 illegal-instruction，而不是被静默忽略。
 
 本里程碑只为 Zicsr 和精确同步异常建立最小状态基础。当前运行模式固定为 M，
-不加入 U/S-mode、interrupt、`MRET`、PMP、Debug、Zicntr 或 Zihpm。主 decoder
-必须等状态所有者、异常合并和端到端测试都完成后，才把六条 CSR 指令从 illegal
-切换为合法。
+不加入 U/S-mode、interrupt、`MRET`、PMP、Debug、Zicntr 或 Zihpm。状态所有者、
+异常合并和端到端测试已经完成，主 decoder 现已把 CSR 语义叶子明确识别的六条
+Zicsr 指令切换为合法；保留的 SYSTEM 编码仍为 illegal。
 
 ## 2. 冻结的实现环境
 
@@ -203,4 +203,4 @@ trap_valid、trap_pc、trap_cause、trap_value
 - trap 与显式 CSR 写同周期时 trap 胜出；
 - reset、trap 和普通写各自只产生一次可观察状态变化。
 
-上述单元测试、完整旧回归和 lint 已通过，owner 已进入 core 集成；主 decoder 激活仍作为下一独立增量，并须补齐六条 Zicsr 指令的 core 级端到端验证。
+上述单元测试、完整旧回归和 lint 已通过，owner 已进入 core 集成；主 decoder 激活与六条 Zicsr 指令的 core 级端到端验证也已完成。当前定向场景覆盖 RMW 旧值写回、连续访问、CSR-use late-result hazard、`rd=x0`/零源读写抑制、MRO 真实写和不存在地址的精确 illegal trap，以及 trap 对年轻 store 副作用的阻断。

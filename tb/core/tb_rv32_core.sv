@@ -84,13 +84,13 @@ module tb_rv32_core;
     int unsigned expected_trap_count;
     int unsigned observed_trap_count;
 
-    int unsigned expected_load_use_count;
+    int unsigned expected_late_result_hazard_count;
     int unsigned expected_redirect_count;
     int unsigned minimum_ex_request_wait_count;
     int unsigned minimum_mem_response_wait_count;
     int unsigned minimum_imem_request_stall_count;
 
-    int unsigned load_use_count;
+    int unsigned late_result_hazard_count;
     int unsigned redirect_count;
     int unsigned ex_request_wait_count;
     int unsigned mem_response_wait_count;
@@ -333,6 +333,21 @@ module tb_rv32_core;
         );
     endfunction
 
+    function automatic logic [31:0] instruction_csr(
+        input logic [11:0] csr_address,
+        input logic [4:0]  source_field,
+        input logic [2:0]  funct3,
+        input logic [4:0]  rd_addr
+    );
+        instruction_csr = {
+            csr_address,
+            source_field,
+            funct3,
+            rd_addr,
+            OPCODE_SYSTEM
+        };
+    endfunction
+
     task automatic expect_retirement(
         input logic [31:0] pc,
         input logic [31:0] instruction,
@@ -434,6 +449,80 @@ module tb_rv32_core;
         end
     endtask
 
+    task automatic emit_csr_retirement(
+        input logic [11:0] csr_address,
+        input logic [4:0]  source_field,
+        input logic [2:0]  funct3,
+        input logic [4:0]  rd_addr,
+        input logic [31:0] expected_old_data
+    );
+        logic [31:0] instruction;
+        begin
+            instruction = instruction_csr(
+                csr_address,
+                source_field,
+                funct3,
+                rd_addr
+            );
+
+            if (rd_addr == 5'b0) begin
+                emit_no_write_instruction(instruction);
+            end else begin
+                emit_writeback_instruction(
+                    instruction,
+                    rd_addr,
+                    expected_old_data
+                );
+            end
+        end
+    endtask
+
+    task automatic check_csr_trap_blocks_store(
+        input logic [31:0] fault_pc,
+        input logic [31:0] fault_instruction,
+        input logic [31:0] younger_store_pc
+    );
+        begin
+            while (
+                (trap_valid !== 1'b1) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
+
+            check_condition(
+                (trap_valid === 1'b1) &&
+                (trap_pc === fault_pc) &&
+                (trap_cause === EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION) &&
+                (trap_value === fault_instruction),
+                "CSR access did not produce the expected illegal trap"
+            );
+            check_condition(
+                (dut.ex_mem_q.csr_ctrl.valid === 1'b1) &&
+                (dut.csr_access_illegal === 1'b1) &&
+                (dut.final_mem_exception.valid === 1'b1) &&
+                (dut.final_mem_exception.cause ===
+                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION),
+                "illegal CSR access did not reach the MEM access checker"
+            );
+            check_condition(
+                (dut.ex_mem_active_candidate.valid === 1'b1) &&
+                (dut.ex_mem_active_candidate.pc === younger_store_pc) &&
+                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1),
+                "younger store was not aligned in EX with the CSR trap"
+            );
+            check_condition(
+                (dmem_req_ready === 1'b1) &&
+                (dmem_req_valid === 1'b0) &&
+                (dut.u_lsu.request_fire === 1'b0) &&
+                (dut.u_lsu.outstanding_q === 1'b0) &&
+                (dut.ex_request_block === 1'b1),
+                "illegal CSR trap did not block the ready younger store"
+            );
+        end
+    endtask
+
     task automatic install_trap_handler(
         input logic [4:0]  rd_addr,
         input logic [31:0] rd_data
@@ -480,13 +569,13 @@ module tb_rv32_core;
             expected_trap_count         = 0;
             observed_trap_count         = 0;
 
-            expected_load_use_count          = 0;
+            expected_late_result_hazard_count = 0;
             expected_redirect_count          = 0;
             minimum_ex_request_wait_count    = 0;
             minimum_mem_response_wait_count  = 0;
             minimum_imem_request_stall_count = 0;
 
-            load_use_count          = 0;
+            late_result_hazard_count = 0;
             redirect_count          = 0;
             ex_request_wait_count   = 0;
             mem_response_wait_count = 0;
@@ -569,11 +658,12 @@ module tb_rv32_core;
                 )
             );
             check_condition(
-                load_use_count == expected_load_use_count,
+                late_result_hazard_count ==
+                    expected_late_result_hazard_count,
                 $sformatf(
-                    "load-use event count %0d, expected %0d",
-                    load_use_count,
-                    expected_load_use_count
+                    "late-result hazard count %0d, expected %0d",
+                    late_result_hazard_count,
+                    expected_late_result_hazard_count
                 )
             );
             check_condition(
@@ -622,8 +712,8 @@ module tb_rv32_core;
                     scenario_check_count
                 );
                 $display(
-                    "       events: load_use=%0d redirect=%0d ex_wait=%0d mem_wait=%0d imem_req_stall=%0d",
-                    load_use_count,
+                    "       events: late_result=%0d redirect=%0d ex_wait=%0d mem_wait=%0d imem_req_stall=%0d",
+                    late_result_hazard_count,
                     redirect_count,
                     ex_request_wait_count,
                     mem_response_wait_count,
@@ -1003,7 +1093,7 @@ module tb_rv32_core;
             );
             expect_dmem_request(1'b0, 32'h10c, '0, '0);
 
-            expected_load_use_count = 3;
+            expected_late_result_hazard_count = 3;
 
             release_reset();
             wait_for_completion();
@@ -1271,7 +1361,7 @@ module tb_rv32_core;
                 32'h0000_0057
             );
 
-            expected_load_use_count = 1;
+            expected_late_result_hazard_count = 1;
             minimum_imem_request_stall_count = 3;
             minimum_ex_request_wait_count = 3;
             minimum_mem_response_wait_count = 3;
@@ -1824,6 +1914,247 @@ module tb_rv32_core;
         end
     endtask
 
+    task automatic scenario_zicsr_rmw_and_hazard;
+        begin
+            begin_scenario("zicsr_rmw_and_hazard");
+
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'd15),
+                5'd1,
+                32'h0000_000f
+            );
+
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd1,
+                FUNCT3_CSRRW,
+                5'd5,
+                32'h0000_0000
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd0,
+                FUNCT3_CSRRS,
+                5'd6,
+                32'h0000_000f
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd6,
+                FUNCT3_CSRRC,
+                5'd7,
+                32'h0000_000f
+            );
+
+            // The prior CSR result must be forwarded as the CSRRC source.
+            // Read mscratch again to prove that the forwarded 0x0f cleared it.
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd0,
+                FUNCT3_CSRRS,
+                5'd13,
+                32'h0000_0000
+            );
+
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd27,
+                FUNCT3_CSRRWI,
+                5'd0,
+                32'h0000_0000
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd4,
+                FUNCT3_CSRRSI,
+                5'd8,
+                32'h0000_001b
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd3,
+                FUNCT3_CSRRCI,
+                5'd9,
+                32'h0000_001f
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd0,
+                FUNCT3_CSRRSI,
+                5'd10,
+                32'h0000_001c
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd0,
+                FUNCT3_CSRRCI,
+                5'd11,
+                32'h0000_001c
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MSCRATCH,
+                5'd0,
+                FUNCT3_CSRRS,
+                5'd12,
+                32'h0000_001c
+            );
+
+            expected_late_result_hazard_count = 1;
+
+            release_reset();
+            wait_for_completion();
+            check_condition(
+                dut.u_csr_trap.mscratch_q == 32'h0000_001c,
+                "final mscratch value did not match the CSR RMW sequence"
+            );
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_zicsr_mro_illegal;
+        logic [31:0] fault_instruction;
+        logic [31:0] fault_pc;
+        logic [31:0] younger_store;
+        logic [31:0] younger_store_pc;
+        begin
+            begin_scenario("zicsr_mro_illegal");
+
+            emit_csr_retirement(
+                CSR_ADDR_MVENDORID,
+                5'd0,
+                FUNCT3_CSRRS,
+                5'd1,
+                32'b0
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MVENDORID,
+                5'd0,
+                FUNCT3_CSRRC,
+                5'd2,
+                32'b0
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MVENDORID,
+                5'd0,
+                FUNCT3_CSRRSI,
+                5'd3,
+                32'b0
+            );
+            emit_csr_retirement(
+                CSR_ADDR_MVENDORID,
+                5'd0,
+                FUNCT3_CSRRCI,
+                5'd4,
+                32'b0
+            );
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd5, 5'd0, 32'd1),
+                5'd5,
+                32'd1
+            );
+
+            fault_instruction = instruction_csr(
+                CSR_ADDR_MVENDORID,
+                5'd5,
+                FUNCT3_CSRRW,
+                5'd0
+            );
+            fault_pc = program_pc;
+            u_imem.write_word(program_pc, fault_instruction);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION,
+                fault_instruction
+            );
+            program_pc = program_pc + 32'd4;
+
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd5,
+                32'h0000_0100
+            );
+            younger_store_pc = program_pc;
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd14, 32'd14);
+
+            release_reset();
+            check_csr_trap_blocks_store(
+                fault_pc,
+                fault_instruction,
+                younger_store_pc
+            );
+            wait_for_completion();
+            check_condition(
+                u_dmem.read_word(32'h0000_0100) == 32'b0,
+                "MRO-illegal younger store modified memory"
+            );
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "MRO-illegal younger store left an LSU transaction"
+            );
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_zicsr_unknown_illegal;
+        logic [31:0] fault_instruction;
+        logic [31:0] fault_pc;
+        logic [31:0] younger_store;
+        logic [31:0] younger_store_pc;
+        begin
+            begin_scenario("zicsr_unknown_illegal");
+
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'h5a),
+                5'd1,
+                32'h0000_005a
+            );
+
+            fault_instruction = instruction_csr(
+                12'h302,
+                5'd0,
+                FUNCT3_CSRRS,
+                5'd2
+            );
+            fault_pc = program_pc;
+            u_imem.write_word(program_pc, fault_instruction);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION,
+                fault_instruction
+            );
+            program_pc = program_pc + 32'd4;
+
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd1,
+                32'h0000_0104
+            );
+            younger_store_pc = program_pc;
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd15, 32'd15);
+
+            release_reset();
+            check_csr_trap_blocks_store(
+                fault_pc,
+                fault_instruction,
+                younger_store_pc
+            );
+            wait_for_completion();
+            check_condition(
+                u_dmem.read_word(32'h0000_0104) == 32'b0,
+                "unknown-CSR younger store modified memory"
+            );
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "unknown-CSR younger store left an LSU transaction"
+            );
+            end_scenario();
+        end
+    endtask
+
     task automatic scenario_reset_during_dmem;
         begin
             begin_scenario("reset_during_dmem");
@@ -2128,12 +2459,12 @@ module tb_rv32_core;
                 (dut.if_id_action == PIPE_HOLD) &&
                 (dut.id_ex_action == PIPE_CLEAR)
             ) begin
-                load_use_count++;
+                late_result_hazard_count++;
                 check_condition(
                     (dut.fetch_action == FETCH_HOLD) &&
                     (dut.ex_mem_action == PIPE_LOAD) &&
                     (dut.mem_wb_action == PIPE_LOAD),
-                    "load-use selected wrong pipeline actions"
+                    "late-result hazard selected wrong pipeline actions"
                 );
             end
 
@@ -2497,6 +2828,9 @@ module tb_rv32_core;
         scenario_trap_beats_redirect();
         scenario_dmem_fault_trap_wait();
         scenario_trap_redirect_backpressure();
+        scenario_zicsr_rmw_and_hazard();
+        scenario_zicsr_mro_illegal();
+        scenario_zicsr_unknown_illegal();
         scenario_reset_during_imem();
         scenario_reset_during_dmem();
 

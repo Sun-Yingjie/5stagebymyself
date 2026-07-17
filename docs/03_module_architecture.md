@@ -1,7 +1,7 @@
 # 模块划分与顶层集成架构
 
 > 上位规格：`00_processor_architecture.md`、`01_core_system_context.md`、`02_pipeline_contract.md`  
-> 当前阶段：v0.1 模块边界已冻结；v0.2 同步 trap/CSR owner 已接入 core，Zicsr 指令尚未激活。
+> 当前阶段：v0.1 模块边界已冻结；v0.2 同步 trap/CSR owner 已接入 core，Zicsr 有效译码由主 decoder 组合语义叶子后统一产生。
 
 ## 1. 模块划分原则
 
@@ -19,7 +19,7 @@ rv32_core
 ├── rv32_ifu
 ├── rv32_idu
 │   ├── rv32_decoder
-│   ├── rv32_csr_decoder  已独立验证，下一增量接入 IDU
+│   │   └── rv32_csr_decoder  已独立验证并由主 decoder 实例化
 │   ├── rv32_imm_gen
 │   └── rv32_regfile
 ├── rv32_exu
@@ -70,7 +70,7 @@ rv32_pkg.sv
 - 输出 ID/EX 所需的数据和语义控制；
 - 不拥有流水寄存器。
 
-`rv32_decoder`、`rv32_csr_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。当前 `rv32_csr_decoder` 已单独编译和测试，但尚未由 IDU 实例化；CSR 流水承载、写回和 trap owner 路径已经接通，主 `rv32_decoder` 仍故意把 CSR 编码报告为 illegal instruction，把六条 Zicsr 指令的合法化及端到端验证保留为下一独立增量。
+`rv32_decoder`、`rv32_csr_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。`rv32_decoder` 内部实例化已经单测的 `rv32_csr_decoder`，仍由主 decoder 唯一生成最终 `decode_ctrl`：它保留对 `ECALL/EBREAK` 的完整指令匹配，只在 CSR 叶子报告六种合法 Zicsr `funct3` 时清除 illegal，并统一设置 `uses_rs1`、`csr_ctrl` 和 `WB_CSR`。因此保留的 SYSTEM 编码不会被整个 opcode 一刀切为合法，IDU 也不需要在第二处覆盖译码控制。
 
 #### 3.3.1 `rv32_csr_decoder`
 
@@ -85,7 +85,7 @@ csr_ctrl.write_enable
 uses_rs1
 ```
 
-读写使能只由 `rd/rs1/uimm` 编码字段确定，不读取运行时寄存器值。该模块不判断 CSR 地址是否存在、访问权限、只读属性或 WARL 行为；IDU 后续直接从 `instruction[31:20]` 提取 `csr_address`，MEM 中的唯一 CSR 状态所有者负责访问合法性。
+读写使能只由 `rd/rs1/uimm` 编码字段确定，不读取运行时寄存器值。该模块不判断 CSR 地址是否存在、访问权限、只读属性或 WARL 行为；主 decoder 只组合其语义控制，IDU 从 `instruction[31:20]` 提取 `csr_address`，MEM 中的唯一 CSR 状态所有者负责访问合法性。
 
 ### 3.4 `rv32_exu`
 
@@ -519,7 +519,7 @@ rs2_forward_select
 late_result_hazard
 ```
 
-`late_result_hazard` 由 `memory_read || csr_ctrl.valid` 归纳得到。当前可达路径只有 load；主译码接通 Zicsr 后，任何在 MEM 才形成写回值的 CSR 生产者自动使用同一检测。EX/MEM 中的 late-result 生产者还必须阻止同名的更老 MEM/WB 值被误选。该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
+`late_result_hazard` 由 `memory_read || csr_ctrl.valid` 归纳得到。当前 load 和 Zicsr 都已可达：任何在 MEM 才形成写回值的生产者统一使用同一检测。EX/MEM 中的 late-result 生产者还必须阻止同名的更老 MEM/WB 值被误选。该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
 
 ### 9.4 EXU
 

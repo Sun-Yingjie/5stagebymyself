@@ -42,6 +42,7 @@ module tb_rv32_decoder;
 
         test_fence();
         test_system_exceptions();
+        test_zicsr();
 
         test_op_imm(FUNCT3_ADD_SUB, FUNCT7_BASE,    ALU_ADD,  "ADDI");
         test_op_imm(FUNCT3_SLL,     FUNCT7_BASE,    ALU_SLL,  "SLLI");
@@ -196,34 +197,88 @@ module tb_rv32_decoder;
                 "MRET remains illegal before Machine Mode"
             );
             check_decode(
-                make_csr_instruction(FUNCT3_CSRRW),
+                make_instruction(OPCODE_SYSTEM, 3'b100, FUNCT7_BASE),
                 expected_ctrl,
-                "CSRRW remains illegal before full Zicsr path"
+                "reserved SYSTEM funct3 remains illegal"
             );
-            check_decode(
-                make_csr_instruction(FUNCT3_CSRRS),
-                expected_ctrl,
-                "CSRRS remains illegal before full Zicsr path"
+        end
+    endtask
+
+    task automatic test_zicsr;
+        begin
+            test_zicsr_instruction(
+                FUNCT3_CSRRW,
+                CSR_WRITE,
+                1'b0,
+                1'b1,
+                "CSRRW"
             );
-            check_decode(
-                make_csr_instruction(FUNCT3_CSRRC),
-                expected_ctrl,
-                "CSRRC remains illegal before full Zicsr path"
+            test_zicsr_instruction(
+                FUNCT3_CSRRS,
+                CSR_SET,
+                1'b0,
+                1'b1,
+                "CSRRS"
             );
-            check_decode(
-                make_csr_instruction(FUNCT3_CSRRWI),
-                expected_ctrl,
-                "CSRRWI remains illegal before full Zicsr path"
+            test_zicsr_instruction(
+                FUNCT3_CSRRC,
+                CSR_CLEAR,
+                1'b0,
+                1'b1,
+                "CSRRC"
             );
-            check_decode(
-                make_csr_instruction(FUNCT3_CSRRSI),
-                expected_ctrl,
-                "CSRRSI remains illegal before full Zicsr path"
+            test_zicsr_instruction(
+                FUNCT3_CSRRWI,
+                CSR_WRITE,
+                1'b1,
+                1'b0,
+                "CSRRWI"
             );
+            test_zicsr_instruction(
+                FUNCT3_CSRRSI,
+                CSR_SET,
+                1'b1,
+                1'b0,
+                "CSRRSI"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRCI,
+                CSR_CLEAR,
+                1'b1,
+                1'b0,
+                "CSRRCI"
+            );
+        end
+    endtask
+
+    task automatic test_zicsr_instruction (
+        input logic [2:0]     funct3,
+        input csr_operation_e operation,
+        input logic           use_immediate,
+        input logic           uses_rs1,
+        input string          case_name
+    );
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.uses_rs1 = uses_rs1;
+
+            expected_ctrl.csr_ctrl.valid = 1'b1;
+            expected_ctrl.csr_ctrl.operation = operation;
+            expected_ctrl.csr_ctrl.use_immediate = use_immediate;
+            expected_ctrl.csr_ctrl.read_enable = 1'b1;
+            expected_ctrl.csr_ctrl.write_enable = 1'b1;
+
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+            expected_ctrl.wb_ctrl.register_write = 1'b1;
+            expected_ctrl.wb_ctrl.writeback_select = WB_CSR;
+
             check_decode(
-                make_csr_instruction(FUNCT3_CSRRCI),
+                make_csr_instruction(funct3),
                 expected_ctrl,
-                "CSRRCI remains illegal before full Zicsr path"
+                case_name
             );
         end
     endtask

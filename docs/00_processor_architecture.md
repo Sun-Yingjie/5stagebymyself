@@ -105,8 +105,9 @@ Zicsr 增加 `CSRRW/CSRRS/CSRRC/CSRRWI/CSRRSI/CSRRCI` 六条原子 CSR 读改写
 
 本项目 v0.2 实际存在的 CSR 地址、reset、WARL/MRO 规则、trap 自动更新和分阶段
 延期范围，以 [Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 为准。
-状态所有者先独立单测，再接入 core；在 owner、最终异常合并和端到端验证完成前，
-主 decoder 继续把 CSR 指令判为 illegal。
+状态所有者、最终异常合并和六条指令的端到端验证已经完成；主 decoder 只对
+`rv32_csr_decoder` 明确认可的六种 Zicsr 编码清除 illegal，具体 CSR 地址合法性仍在
+MEM 由唯一状态所有者判定。
 
 ## 5. 当前明确不做的内容
 

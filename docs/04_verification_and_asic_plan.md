@@ -479,7 +479,7 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 5. 再把语义译码接入逐级承载字段、late-result hazard 与写回数据通路；
 6. 冻结项目 v0.2 Machine CSR profile，再独立实现唯一 CSR/trap 状态所有者及其单元测试，主 decoder 仍保持 CSR illegal；
 7. 已重构 LSU/core 的 MEM 结果组装边界，接入 CSR 合法性检查、最终异常合并、年轻 DMem 请求抑制、trap redirect 和提交跟踪；
-8. 最后激活六条 CSR 指令，完成 CSR late-result、连续访问、只读/未知地址和精确 trap 的 core 级 directed test；
+8. 已激活六条 CSR 指令，并完成 CSR late-result、连续访问、读写抑制、只读/未知地址和精确 trap 的 core 级 directed test；
 9. 同步异常闭环稳定后补 `MRET`，再加入 RV32M 多周期单元；
 10. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
 11. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源；

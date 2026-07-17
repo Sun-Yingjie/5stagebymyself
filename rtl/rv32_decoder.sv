@@ -5,6 +5,15 @@ module rv32_decoder(
 
     import rv32_pkg::*;
 
+    csr_ctrl_t csr_decode_ctrl;
+    logic      csr_decode_uses_rs1;
+
+    rv32_csr_decoder u_csr_decoder (
+        .instruction (instruction),
+        .csr_ctrl    (csr_decode_ctrl),
+        .uses_rs1   (csr_decode_uses_rs1)
+    );
+
     always_comb begin
         decode_ctrl = '0;
 
@@ -223,9 +232,21 @@ module rv32_decoder(
                     end
 
                     default: begin
-                        // Zicsr and privileged SYSTEM instructions are added
-                        // by later, independently verified increments.
-                        decode_ctrl.illegal_instruction = 1'b1;
+                        if (csr_decode_ctrl.valid) begin
+                            decode_ctrl.illegal_instruction = 1'b0;
+                            decode_ctrl.uses_rs1 =
+                                csr_decode_uses_rs1;
+                            decode_ctrl.csr_ctrl = csr_decode_ctrl;
+
+                            // CSR instructions do not consume the main ALU
+                            // result. Drive its unused path deterministically.
+                            decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                            decode_ctrl.ex_ctrl.operand_b_select =
+                                OPB_IMMEDIATE;
+
+                            decode_ctrl.wb_ctrl.register_write = 1'b1;
+                            decode_ctrl.wb_ctrl.writeback_select = WB_CSR;
+                        end
                     end
                 endcase
             end
