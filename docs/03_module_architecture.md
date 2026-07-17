@@ -106,7 +106,13 @@ rv32_pkg.sv
 
 ### 3.8 `rv32_csr_trap`
 
-v0.2 加入，负责 Machine Mode CSR、最老异常提交、trap/mret 重定向和 trap 跟踪输出。v0.1 中不存在该模块实例。
+v0.2 加入，拥有 `mstatus`、`mtvec`、`mepc`、`mcause` 和 `mtval` 等 Machine Mode 架构状态。它接收 MEM 中已经合并完成的最老异常，完成 CSR 状态更新，并产生：
+
+- 只持续一个周期的 `trap_take`；
+- 指向 trap handler 的 `trap_redirect`；
+- `trap_valid/pc/cause/value` 跟踪事件。
+
+该模块不检测译码、地址或总线错误，也不直接清除流水寄存器。异常检测仍归属各流水功能模块，流水动作仍由 `rv32_pipeline_ctrl` 统一选择。CSR 指令读写和 `mret` 的完整接口在后续 Zicsr/Machine Mode 增量中继续扩展；本轮先冻结同步异常提交边界。v0.1 中不存在该模块实例。
 
 ## 4. 状态所有权
 
@@ -354,14 +360,15 @@ IFU / IDU / EXU / LSU
 - forward unit：前递选择和 load-use hazard；
 - EXU：EX/MEM 候选以及原始 redirect 条件和目标；
 - LSU：数据请求、EX 请求等待、MEM 响应等待和 MEM/WB 候选；
+- CSR/trap：MEM 最终异常的资格确认、Machine Mode trap 状态和 trap redirect；
 - pipeline control：取指动作和四组流水寄存器动作；
-- core：状态更新、WB bus、退休输出和模块连接。
+- core：状态更新、WB bus、退休/trap 输出和模块连接。
 
 ### 8.2 redirect 资格确认
 
 EXU 只产生 `raw_redirect`。如果更老的 MEM 指令正在等待或发生异常，raw redirect 不能直接修改 IFU。
 
-pipeline control 选择 `EX redirect` 为当前最高优先级事件后，core 才生成一次 `qualified_redirect` 交给 IFU。这样被保持在 EX 的同一条 branch 不会反复重定向。
+`rv32_csr_trap` 独立产生 `trap_redirect`。pipeline control 选择 `trap_take` 或 `EX redirect` 为当前最高优先级事件后，core 才生成一次 `qualified_redirect` 交给 IFU：trap 目标取自 `trap_redirect`，普通控制转移目标取自 `raw_redirect`。这样更老的 MEM trap 必然压过年轻 EX redirect，被保持在 EX 的同一条 branch 也不会反复重定向。
 
 ### 8.3 ready/valid 组合环路约束
 
@@ -390,7 +397,7 @@ load_use_hazard
 fetch_response_available
 ```
 
-它不解析指令字，不计算地址，不选择前递数据，也不直接驱动寄存器写或存储器写。
+`trap_take` 必须已经由 MEM 最终异常资格确认产生，不能是 IF、ID 或 EX 的原始异常。pipeline control 不解析指令字，不计算地址，不选择前递数据，也不直接驱动寄存器写或存储器写。
 
 ## 9. 模块接口契约
 
@@ -529,13 +536,39 @@ mem_wb_action
 redirect_commit
 ```
 
-只有 `redirect_commit && raw_redirect.valid` 时，core 才产生 `qualified_redirect`。
+`redirect_commit` 表示普通 EX redirect 获准提交；`trap_take` 使用事件优先级中的独立 trap 路径。core 根据被选中的事件和对应目标产生唯一 `qualified_redirect`。
 
-### 9.7 Core
+### 9.7 CSR/trap
 
-Core 根据 MEM/WB 当前状态生成 WB bus 和退休信息，根据动作和各级候选状态在唯一时序更新点更新四组流水寄存器。
+输入：
 
-### 9.8 组合依赖顺序
+```text
+clk、rst
+mem_valid
+mem_pc
+mem_exception
+```
+
+输出：
+
+```text
+trap_take
+trap_redirect
+trap_valid
+trap_pc
+trap_cause
+trap_value
+```
+
+`mem_exception` 必须是 LSU 合并当前数据响应错误后的最终异常。`trap_take` 只在 `mem_valid && mem_exception.valid` 且该指令不再等待响应时有效；该周期的时钟沿把 `mem_pc`、`mem_exception.cause/value` 分别写入 `mepc`、`mcause`、`mtval`。`trap_redirect` 取自 `mtvec` 定义的 trap 入口。
+
+`trap_valid/pc/cause/value` 与该次 `trap_take` 一一对应，不报告尚未提交的早期异常。CSR 指令访问端口和 `mret` 端口在后续增量中加入，不改变这里的异常提交接口。
+
+### 9.8 Core
+
+Core 根据 MEM/WB 当前状态生成 WB bus 和退休信息，仲裁 trap/EX redirect，根据动作和各级候选状态在唯一时序更新点更新四组流水寄存器。同周期存在更老 WB retire 和较年轻 MEM trap 时，两组跟踪输出都可以有效。
+
+### 9.9 组合依赖顺序
 
 ```text
 MEM/WB_q
@@ -611,6 +644,17 @@ module rv32_core #(
 );
 ```
 
+上述代码块是当前 v0.1 RTL 的精确端口。v0.2 同步异常闭环在保持现有端口不变的基础上增加：
+
+```systemverilog
+    output logic        trap_valid,
+    output logic [31:0] trap_pc,
+    output logic [31:0] trap_cause,
+    output logic [31:0] trap_value
+```
+
+这些端口是提交级跟踪接口，不是外部中断输入，也不承担 CSR 软件访问功能。
+
 ### 10.1 顶层约束
 
 - `rst` 是高有效同步核心复位，芯片级 `ext_rst_n` 位于外部 wrapper。
@@ -633,7 +677,7 @@ cp_rsp_ready = 0
 
 其他协处理器请求输出固定为 0，custom 指令不进入协处理器路径。未使用协处理器输入产生的 lint 信息必须通过参数化常量传播或有依据的局部 waiver 处理，不能用无意义逻辑掩盖。
 
-v0.1 顶层不包含外部中断、trap 跟踪、Cache、AXI、JTAG 或调试接口。
+v0.1 顶层不包含外部中断、trap 跟踪、Cache、AXI、JTAG 或调试接口；v0.2 只按上述定义增加同步异常的 trap 跟踪输出，外部中断仍不加入。
 
 ## 11. 本层结论
 
