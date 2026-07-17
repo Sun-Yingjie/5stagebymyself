@@ -19,6 +19,7 @@ module rv32_exu (
     logic instruction_address_misaligned;
     logic data_address_misaligned;
     logic [31:0] redirect_target;
+    logic [31:0] csr_source;
     alu_operation_e    alu_operation;
     branch_operation_e branch_operation;
 
@@ -78,6 +79,19 @@ assign branch_operation =
     );
 
     always_comb begin
+        csr_source = 32'b0;
+
+        if (id_ex_q.csr_ctrl.valid) begin
+            if (id_ex_q.csr_ctrl.use_immediate) begin
+                csr_source = {27'b0, id_ex_q.instruction[19:15]};
+            end
+            else begin
+                csr_source = rs1_exec;
+            end
+        end
+    end
+
+    always_comb begin
         if (id_ex_q.ex_ctrl.is_jalr) begin
             redirect_target = {alu_result[31:1], 1'b0};
         end
@@ -132,6 +146,9 @@ assign branch_operation =
         ex_mem_candidate.pc_plus_4 = id_ex_q.pc_plus_4;
         ex_mem_candidate.exec_result = alu_result;
         ex_mem_candidate.store_data = rs2_exec;
+        ex_mem_candidate.csr_ctrl = id_ex_q.csr_ctrl;
+        ex_mem_candidate.csr_address = id_ex_q.csr_address;
+        ex_mem_candidate.csr_source = csr_source;
         ex_mem_candidate.rd_addr = id_ex_q.rd_addr;
         ex_mem_candidate.mem_ctrl = id_ex_q.mem_ctrl;
         ex_mem_candidate.wb_ctrl = id_ex_q.wb_ctrl;
@@ -160,6 +177,8 @@ assign branch_operation =
         end
 
         if (ex_mem_candidate.exception.valid) begin
+            ex_mem_candidate.csr_ctrl = '0;
+            ex_mem_candidate.csr_source = 32'b0;
             ex_mem_candidate.mem_ctrl = '0;
             ex_mem_candidate.wb_ctrl = '0;
         end

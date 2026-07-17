@@ -109,6 +109,7 @@ module rv32_core #(
             WB_EXEC:      wb_write_data = mem_wb_q.exec_result;
             WB_LOAD:      wb_write_data = mem_wb_q.load_result;
             WB_PC_PLUS_4: wb_write_data = mem_wb_q.pc_plus_4;
+            WB_CSR:       wb_write_data = mem_wb_q.csr_read_data;
             default:      wb_write_data = '0;
         endcase
     end

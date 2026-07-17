@@ -156,7 +156,8 @@ package rv32_pkg;
     typedef enum logic [1:0] {  // sel write back source
         WB_EXEC             = 2'b00,
         WB_LOAD             = 2'b01,
-        WB_PC_PLUS_4        = 2'b10
+        WB_PC_PLUS_4        = 2'b10,
+        WB_CSR              = 2'b11
     } writeback_select_e;
 
 // stage need package
@@ -188,6 +189,7 @@ package rv32_pkg;
         logic            illegal_instruction;
         logic            environment_call;
         logic            breakpoint;
+        csr_ctrl_t       csr_ctrl;
         ex_ctrl_t        ex_ctrl;
         mem_ctrl_t       mem_ctrl;
         wb_ctrl_t        wb_ctrl;
@@ -224,6 +226,9 @@ package rv32_pkg;
 
         logic [31:0] immediate;
 
+        csr_ctrl_t  csr_ctrl;
+        logic [11:0] csr_address;
+
         ex_ctrl_t    ex_ctrl;
         mem_ctrl_t   mem_ctrl;
         wb_ctrl_t    wb_ctrl;
@@ -238,6 +243,9 @@ package rv32_pkg;
 
         logic [31:0] exec_result;
         logic [31:0] store_data;
+        csr_ctrl_t   csr_ctrl;
+        logic [11:0] csr_address;
+        logic [31:0] csr_source;
         logic [4:0]  rd_addr;
 
         mem_ctrl_t   mem_ctrl;
@@ -253,6 +261,7 @@ package rv32_pkg;
 
         logic [31:0] exec_result;
         logic [31:0] load_result;
+        logic [31:0] csr_read_data;
         logic [4:0]  rd_addr;
 
         wb_ctrl_t    wb_ctrl;
