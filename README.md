@@ -10,13 +10,13 @@
 - `ECALL/EBREAK`、非法指令与地址异常元数据；
 - EX/MEM、MEM/WB 前递；
 - WB→ID 同周期旁路；
-- load-use bubble；
+- load/CSR 共用的 late-result bubble；
 - EX 阶段 branch/JAL/JALR redirect；
 - 独立指令/数据 valid-ready 接口；
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Zicsr 流水契约和无状态 CSR 运算、语义译码叶子模块；
+- Zicsr 流水契约、无状态 CSR 运算/语义译码叶子，以及尚不可达的被动流水字段与 late-result 控制路径；
 - Icarus 13/13 叶子 TB、Icarus/Verilator core 7/7 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
@@ -98,7 +98,7 @@ waves/          阶段性波形落点
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
 - `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- Zicsr 仅完成架构契约和无状态 CSR 运算/语义译码叶子；主 decoder 仍保持 CSR illegal，尚未接入流水与 CSR 状态；
+- Zicsr 已完成架构契约、无状态 CSR 运算/语义译码叶子、被动流水字段和通用 late-result 冒险控制；主 decoder 仍保持 CSR illegal，尚无 CSR 状态所有者，因此 CSR 指令仍不可执行；
 - 未实现 Machine Mode、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；

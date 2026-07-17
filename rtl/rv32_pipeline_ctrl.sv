@@ -5,7 +5,7 @@ module rv32_pipeline_ctrl (
     input  logic                    ex_request_wait,
     input  logic                    ex_multicycle_wait,
     input  logic                    raw_redirect_valid,
-    input  logic                    load_use_hazard,
+    input  logic                    late_result_hazard,
     input  logic                    fetch_response_available,
 
     output rv32_pkg::fetch_action_e fetch_action,
@@ -65,7 +65,7 @@ module rv32_pipeline_ctrl (
             mem_wb_action   = PIPE_LOAD;
             redirect_commit = 1'b1;
         end
-        else if (load_use_hazard) begin
+        else if (late_result_hazard) begin
             fetch_action    = FETCH_HOLD;
             if_id_action    = PIPE_HOLD;
             id_ex_action    = PIPE_CLEAR;

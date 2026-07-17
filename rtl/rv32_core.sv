@@ -85,7 +85,7 @@ module rv32_core #(
     forward_select_e rs2_forward_select;
 
     logic fetch_response_available;
-    logic load_use_hazard;
+    logic late_result_hazard;
     logic ex_request_wait;
     logic mem_response_wait;
     logic redirect_commit;
@@ -96,9 +96,9 @@ module rv32_core #(
     logic [31:0] wb_write_data;
 
     // Flattened control fields keep Icarus port widths unambiguous.
-    logic id_ex_memory_read;
+    logic id_ex_result_late;
     logic ex_mem_register_write;
-    logic ex_mem_memory_read;
+    logic ex_mem_result_late;
     logic mem_wb_register_write;
 
     // Writeback and retirement
@@ -134,9 +134,11 @@ module rv32_core #(
     assign retire_rd_data = wb_bus.rd_data;
 
     // Forwarding datapath
-    assign id_ex_memory_read     = id_ex_q.mem_ctrl.memory_read;
+    assign id_ex_result_late =
+        id_ex_q.mem_ctrl.memory_read || id_ex_q.csr_ctrl.valid;
     assign ex_mem_register_write = ex_mem_q.wb_ctrl.register_write;
-    assign ex_mem_memory_read    = ex_mem_q.mem_ctrl.memory_read;
+    assign ex_mem_result_late =
+        ex_mem_q.mem_ctrl.memory_read || ex_mem_q.csr_ctrl.valid;
     assign mem_wb_register_write = mem_wb_q.wb_ctrl.register_write;
 
     assign mem_wb_forward_value = wb_write_data;
@@ -245,7 +247,7 @@ module rv32_core #(
 
     // Hazard detection and global pipeline control
     rv32_forward_unit u_forward_unit (
-        // Current ID-stage consumer for load-use detection
+        // Current ID-stage consumer for late-result detection
         .id_valid              (id_ex_candidate.valid),
         .id_rs1_addr           (id_ex_candidate.rs1_addr),
         .id_rs2_addr           (id_ex_candidate.rs2_addr),
@@ -259,20 +261,20 @@ module rv32_core #(
         .ex_uses_rs1           (id_ex_q.uses_rs1),
         .ex_uses_rs2           (id_ex_q.uses_rs2),
         .ex_rd_addr            (id_ex_q.rd_addr),
-        .ex_memory_read        (id_ex_memory_read),
+        .ex_result_late        (id_ex_result_late),
 
         // MEM- and WB-stage producers
         .ex_mem_valid          (ex_mem_q.valid),
         .ex_mem_rd_addr        (ex_mem_q.rd_addr),
         .ex_mem_register_write (ex_mem_register_write),
-        .ex_mem_memory_read    (ex_mem_memory_read),
+        .ex_mem_result_late    (ex_mem_result_late),
         .mem_wb_valid          (mem_wb_q.valid),
         .mem_wb_rd_addr        (mem_wb_q.rd_addr),
         .mem_wb_register_write (mem_wb_register_write),
 
         .rs1_forward_select    (rs1_forward_select),
         .rs2_forward_select    (rs2_forward_select),
-        .load_use_hazard       (load_use_hazard)
+        .late_result_hazard    (late_result_hazard)
     );
 
     rv32_pipeline_ctrl u_pipeline_ctrl (
@@ -282,7 +284,7 @@ module rv32_core #(
         .ex_request_wait         (ex_request_wait),
         .ex_multicycle_wait      (1'b0),
         .raw_redirect_valid      (raw_redirect.valid),
-        .load_use_hazard         (load_use_hazard),
+        .late_result_hazard      (late_result_hazard),
         .fetch_response_available(fetch_response_available),
         .fetch_action            (fetch_action),
         .if_id_action            (if_id_action),

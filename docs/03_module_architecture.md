@@ -518,7 +518,7 @@ rs2_forward_select
 late_result_hazard
 ```
 
-`late_result_hazard` 当前由 load 产生；接入 Zicsr 后，任何在 MEM 才形成写回值的 CSR 生产者也使用同一检测。该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
+`late_result_hazard` 由 `memory_read || csr_ctrl.valid` 归纳得到。当前可达路径只有 load；主译码接通 Zicsr 后，任何在 MEM 才形成写回值的 CSR 生产者自动使用同一检测。EX/MEM 中的 late-result 生产者还必须阻止同名的更老 MEM/WB 值被误选。该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
 
 ### 9.4 EXU
 

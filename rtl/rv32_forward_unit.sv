@@ -1,5 +1,5 @@
 module rv32_forward_unit (
-    // 当前 ID 阶段指令，用于检测 load-use
+    // 当前 ID 阶段指令，用于检测 late-result hazard
     input  logic                            id_valid,
     input  logic [4:0]                      id_rs1_addr,
     input  logic [4:0]                      id_rs2_addr,
@@ -13,13 +13,13 @@ module rv32_forward_unit (
     input  logic                            ex_uses_rs1,
     input  logic                            ex_uses_rs2,
     input  logic [4:0]                      ex_rd_addr,
-    input  logic                            ex_memory_read,
+    input  logic                            ex_result_late,
 
     // 当前 MEM 阶段指令，即 EX/MEM 中的生产者
     input  logic                            ex_mem_valid,
     input  logic [4:0]                      ex_mem_rd_addr,
     input  logic                            ex_mem_register_write,
-    input  logic                            ex_mem_memory_read,
+    input  logic                            ex_mem_result_late,
 
     // 当前 WB 阶段指令，即 MEM/WB 中的生产者
     input  logic                            mem_wb_valid,
@@ -28,7 +28,7 @@ module rv32_forward_unit (
 
     output rv32_pkg::forward_select_e       rs1_forward_select,
     output rv32_pkg::forward_select_e       rs2_forward_select,
-    output logic                            load_use_hazard
+    output logic                            late_result_hazard
 );
 
     import rv32_pkg::*;
@@ -44,7 +44,7 @@ module rv32_forward_unit (
                 (ex_mem_rd_addr != 5'b0) &&
                 (ex_mem_rd_addr == ex_rs1_addr)
             ) begin
-                if (!ex_mem_memory_read) begin // not load
+                if (!ex_mem_result_late) begin
                     rs1_forward_select = FWD_EX_MEM;
                 end
             end
@@ -65,7 +65,7 @@ module rv32_forward_unit (
                 (ex_mem_rd_addr != 5'b0) &&
                 (ex_mem_rd_addr == ex_rs2_addr)
             ) begin
-                if (!ex_mem_memory_read) begin // not load
+                if (!ex_mem_result_late) begin
                     rs2_forward_select = FWD_EX_MEM;
                 end
             end
@@ -78,11 +78,11 @@ module rv32_forward_unit (
                 rs2_forward_select = FWD_MEM_WB;
             end
         end
-        // load-use harzard
-        load_use_hazard = // highest priority
+        // The EX producer reaches MEM/WB before its value can be forwarded.
+        late_result_hazard =
             id_valid &&
             ex_valid &&
-            ex_memory_read &&
+            ex_result_late &&
             (ex_rd_addr != 5'b0) &&
             (
                 (id_uses_rs1 && (id_rs1_addr == ex_rd_addr)) ||

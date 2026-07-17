@@ -1627,7 +1627,7 @@ module tb_rv32_core;
                     "redirect selected wrong pipeline actions"
                 );
             end else if (
-                dut.load_use_hazard &&
+                dut.late_result_hazard &&
                 (dut.if_id_action == PIPE_HOLD) &&
                 (dut.id_ex_action == PIPE_CLEAR)
             ) begin

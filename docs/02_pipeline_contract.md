@@ -358,7 +358,7 @@ ID/EX.valid
    )
 ```
 
-当前能力下 `result_late = memory_read`；Zicsr 流水接入后扩展为 `memory_read || csr_ctrl.valid`。检测必须使用译码得到的 `uses_rs1/uses_rs2`，不能只比较指令位域。现有 RTL 的 `load_use_hazard` 信号在 Zicsr 接入时重命名为 `late_result_hazard`，或者保持端口名但严格实现上述广义语义。当前不优化 load 后紧跟 store data 的特殊情况，所有真实依赖统一插入一个 bubble。
+RTL 统一定义 `result_late = memory_read || csr_ctrl.valid`：当前可达路径由 load 产生；主译码接通 Zicsr 后，CSR 旧值路径自动纳入同一规则。检测必须使用译码得到的 `uses_rs1/uses_rs2`，不能只比较指令位域。forward unit 和 pipeline control 之间统一使用 `late_result_hazard`。当前不优化 load 后紧跟 store data 的特殊情况，所有真实依赖统一插入一个 bubble。
 
 ### 8.6 必须覆盖的前递场景
 
