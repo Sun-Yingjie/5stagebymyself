@@ -403,6 +403,23 @@ trap_value
 
 该接口只报告已经提交的架构事件，不报告 IF、ID 或 EX 中尚可能被更老指令冲刷的原始异常。
 
+### 10.5 CSR 内部访问边界
+
+CSR 访问不是处理器核外部总线。core 与唯一 CSR 状态所有者之间使用内部语义接口：
+
+```text
+csr_access_valid
+csr_address[11:0]
+csr_operation
+csr_source[31:0]
+csr_read_enable
+csr_write_enable
+csr_read_data[31:0]
+csr_access_illegal
+```
+
+`csr_read_enable/write_enable` 在 ID 根据指令种类和编码字段确定，而不是根据运行时源数据是否为零猜测。只有 MEM 中有效、未被 flush 且未携带早期异常的 CSR 指令可以拉高 `csr_access_valid`；错误路径和 poisoned 指令不得形成真实 CSR 读写访问。状态所有者先完成地址、权限和只读属性检查，并保证 `csr_access_illegal = csr_access_valid && access_check_failed`。非法访问不得产生读副作用、写副作用或通用寄存器写回；没有有效且合法的读取时，`csr_read_data` 确定为 0。正常 CSR 指令仍通过普通退休接口报告，只有非法访问才通过 trap 跟踪接口报告。
+
 ## 11. 协处理器扩展边界
 
 ### 11.1 指令路径

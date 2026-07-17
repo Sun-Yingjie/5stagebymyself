@@ -27,7 +27,8 @@ rv32_core
 ├── rv32_lsu
 ├── rv32_forward_unit
 ├── rv32_pipeline_ctrl
-└── rv32_csr_trap         v0.2 加入
+└── rv32_csr_trap         Machine Mode 增量加入
+    └── rv32_csr_alu      Zicsr 先实现和独立验证
 ```
 
 另有非模块公共包：
@@ -94,14 +95,14 @@ rv32_pkg.sv
 - 比较 ID/EX 源寄存器与 EX/MEM、MEM/WB 目的寄存器；
 - 产生 `rs1` 和 `rs2` 的前递选择；
 - 实现 EX/MEM 高于 MEM/WB 的优先级；
-- 识别不可从 EX/MEM 取得的 load 结果；
-- 根据 `uses_rs1/uses_rs2` 产生 load-use hazard。
+- 识别不可从 EX/MEM 取得的 late result，包括 load 数据和 CSR 旧值；
+- 根据 `uses_rs1/uses_rs2` 产生 late-result hazard。
 
 该模块只产生选择和 hazard 信息，不保存状态，也不直接修改流水寄存器。
 
 ### 3.7 `rv32_pipeline_ctrl`
 
-- 接收 reset、trap、MEM wait、EX wait、redirect、load-use 和前端响应状态；
+- 接收 reset、trap、MEM wait、EX wait、redirect、late-result hazard 和前端响应状态；
 - 按事件优先级选择唯一事件；
 - 输出取指状态以及四组流水寄存器的动作；
 - 输出当前 EX 指令是否允许进入 EX/MEM；
@@ -109,13 +110,25 @@ rv32_pkg.sv
 
 ### 3.8 `rv32_csr_trap`
 
-v0.2 加入，拥有 `mstatus`、`mtvec`、`mepc`、`mcause` 和 `mtval` 等 Machine Mode 架构状态。它接收 MEM 中已经合并完成的最老异常，完成 CSR 状态更新，并产生：
+v0.2 加入，拥有 `mstatus`、`mtvec`、`mepc`、`mcause` 和 `mtval` 等 Machine Mode 架构状态。它接收 MEM 中的 CSR 语义访问和已经合并完成的最老异常，完成访问检查、CSR 状态更新，并产生：
 
 - 只持续一个周期的 `trap_take`；
 - 指向 trap handler 的 `trap_redirect`；
 - `trap_valid/pc/cause/value` 跟踪事件。
 
-该模块不检测译码、地址或总线错误，也不直接清除流水寄存器。异常检测仍归属各流水功能模块，流水动作仍由 `rv32_pipeline_ctrl` 统一选择。CSR 指令读写和 `mret` 的完整接口在后续 Zicsr/Machine Mode 增量中继续扩展；本轮先冻结同步异常提交边界。v0.1 中不存在该模块实例。
+该模块不检测指令编码或外部总线错误，也不直接清除流水寄存器；但它是 CSR 地址存在性、权限和只读属性的唯一检查者，并在内部实例化 `rv32_csr_alu` 生成候选写值。流水动作仍由 `rv32_pipeline_ctrl` 统一选择。后续 Zicsr/Machine Mode RTL 按第 9.7 节冻结的接口接入，`mret` 再作为 Machine Mode 增量扩展。v0.1 中不存在该模块实例。
+
+### 3.9 `rv32_csr_alu`
+
+Zicsr 增量先加入的纯组合叶子模块。它接收 `CSR_WRITE/CSR_SET/CSR_CLEAR`、当前 CSR 读值和 32 位源操作数，输出候选写值：
+
+```text
+CSR_WRITE: source
+CSR_SET:   csr_read_data | source
+CSR_CLEAR: csr_read_data & ~source
+```
+
+该模块不拥有 CSR 状态，不判断地址是否存在或只读，也不决定当前指令是否真正读写。读写使能、访问合法性和提交资格由 decoder 与 CSR 状态所有者分别负责。当前先把它作为独立叶子验证；`rv32_csr_trap` 加入后由状态所有者内部实例化。
 
 ## 4. 状态所有权
 
@@ -196,7 +209,8 @@ v0.1 暂不在可综合 RTL 中使用 `interface/modport`、class、动态数组
 | `operand_b_select_e` | `OPB_RS2 / OPB_IMMEDIATE` |
 | `branch_operation_e` | `BR_NONE / BR_EQ / BR_NE / BR_LT / BR_GE / BR_LTU / BR_GEU` |
 | `memory_size_e` | `MEM_SIZE_BYTE / MEM_SIZE_HALF / MEM_SIZE_WORD` |
-| `writeback_select_e` | `WB_EXEC / WB_LOAD / WB_PC_PLUS_4` |
+| `writeback_select_e` | `WB_EXEC / WB_LOAD / WB_PC_PLUS_4 / WB_CSR`（Zicsr 流水接入时加入） |
+| `csr_operation_e` | `CSR_WRITE / CSR_SET / CSR_CLEAR` |
 | `forward_select_e` | `FWD_REG / FWD_EX_MEM / FWD_MEM_WB` |
 
 写回来源使用正式枚举常量 `WB_EXEC`，而不是含义过窄的 `ALU`。未来乘除法和协处理器结果进入统一的 execution result 路径，不需要增加新的 WB 多路器输入。所有写回来源枚举常量使用 `WB_` 前缀，避免 package 作用域中的泛化名称冲突。
@@ -233,9 +247,21 @@ decode_ctrl_t:
     illegal_instruction
     environment_call
     breakpoint
+    csr_ctrl
     ex_ctrl
     mem_ctrl
     wb_ctrl
+```
+
+CSR 本地语义控制为：
+
+```text
+csr_ctrl_t:
+    valid
+    operation
+    use_immediate
+    read_enable
+    write_enable
 ```
 
 `immediate_type` 只用于 ID 生成立即数。进入 ID/EX 的是已经扩展完成的 `immediate`，不再携带立即数类型。`environment_call` 和 `breakpoint` 也只在 ID 将合法的 `ECALL/EBREAK` 转换为异常元数据，不随普通控制字段继续传播。
@@ -276,6 +302,8 @@ id_ex_t:
     uses_rs1
     uses_rs2
     immediate[31:0]
+    csr_ctrl
+    csr_address[11:0]
     ex_ctrl
     mem_ctrl
     wb_ctrl
@@ -290,6 +318,9 @@ ex_mem_t:
     pc_plus_4[31:0]
     exec_result[31:0]
     store_data[31:0]
+    csr_ctrl
+    csr_address[11:0]
+    csr_source[31:0]
     rd_addr[4:0]
     mem_ctrl
     wb_ctrl
@@ -304,10 +335,13 @@ mem_wb_t:
     pc_plus_4[31:0]
     exec_result[31:0]
     load_result[31:0]
+    csr_read_data[31:0]
     rd_addr[4:0]
     wb_ctrl
     exception
 ```
+
+Zicsr 接入时，ID/EX 用 `csr_ctrl + csr_address` 保存译码语义，EX 从前递后的 `rs1_exec` 或 `instruction[19:15]` 零扩展值生成 `csr_source`，EX/MEM 保存这组三元快照。MEM/WB 只需继续保存修改前的 `csr_read_data`，由 `WB_CSR` 选择写回。这样每个字段都随产生它的指令跨过所需边界，不依赖从后级反查指令编码。
 
 ### 7.5 公共小型数据包
 
@@ -362,12 +396,12 @@ IFU / IDU / EXU / LSU
 
 - IFU：IF/ID 候选、取指响应可用和取指事务状态；
 - IDU：ID/EX 候选和 ID 源寄存器语义；
-- forward unit：前递选择和 load-use hazard；
+- forward unit：前递选择和 late-result hazard；
 - EXU：EX/MEM 候选以及原始 redirect 条件和目标；
-- LSU：数据请求、EX 请求等待、MEM 响应等待和 MEM/WB 候选；
-- CSR/trap：MEM 最终异常的资格确认、Machine Mode trap 状态和 trap redirect；
+- LSU：数据请求、EX 请求等待、MEM 响应等待、load 结果和数据访问异常；
+- CSR/trap：CSR 读值与访问合法性、MEM 最终异常的资格确认、Machine Mode trap 状态和 trap redirect；
 - pipeline control：取指动作和四组流水寄存器动作；
-- core：状态更新、WB bus、退休/trap 输出和模块连接。
+- core：MEM 最终异常与 MEM/WB 候选组装、状态更新、WB bus、退休/trap 输出和模块连接。
 
 ### 8.2 redirect 资格确认
 
@@ -398,7 +432,7 @@ mem_response_wait
 ex_request_wait
 ex_multicycle_wait
 raw_redirect_valid
-load_use_hazard
+late_result_hazard
 fetch_response_available
 ```
 
@@ -465,10 +499,10 @@ mem_wb_q          较老生产者
 ```text
 rs1_forward_select
 rs2_forward_select
-load_use_hazard
+late_result_hazard
 ```
 
-该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
+`late_result_hazard` 当前由 load 产生；接入 Zicsr 后，任何在 MEM 才形成写回值的 CSR 生产者也使用同一检测。该模块只产生选择和 hazard 信息，不传输或保存 32 位前递数据。
 
 ### 9.4 EXU
 
@@ -509,11 +543,11 @@ dmem_req_valid/write/addr/wdata/wstrb
 dmem_rsp_ready
 ex_request_wait
 mem_response_wait
-mem_wb_candidate
-mem_exception
+load_result
+lsu_exception
 ```
 
-`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。
+`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。LSU 只报告数据访问错误 `lsu_exception`；core 把 load 结果字段、CSR 结果字段和公共 EX/MEM 字段组装为完整 `mem_wb_candidate`。
 
 ### 9.6 Pipeline control
 
@@ -526,7 +560,7 @@ mem_response_wait
 ex_request_wait
 ex_multicycle_wait
 raw_redirect.valid
-load_use_hazard
+late_result_hazard
 fetch_response_available
 ```
 
@@ -551,12 +585,18 @@ redirect_commit
 clk、rst
 mem_valid
 mem_pc
-mem_exception
+mem_instruction
+mem_response_wait
+csr_access_valid/address/operation/source
+csr_read_enable/write_enable
+final_mem_exception
 ```
 
 输出：
 
 ```text
+csr_read_data
+csr_access_illegal
 trap_take
 trap_redirect
 trap_valid
@@ -565,13 +605,15 @@ trap_cause
 trap_value
 ```
 
-`mem_exception` 必须是 LSU 合并当前数据响应错误后的最终异常。`trap_take` 只在 `mem_valid && mem_exception.valid` 且该指令不再等待响应时有效；该周期的时钟沿把 `mem_pc`、`mem_exception.cause/value` 分别写入 `mepc`、`mcause`、`mtval`。`trap_redirect` 取自 `mtvec` 定义的 trap 入口。
+CSR 状态所有者组合检查地址存在性、当前权限和只读属性，产生 `csr_access_illegal`；仅当合法且 `csr_read_enable=1` 时读取修改前的 `csr_read_data`，被抑制的读取不得产生读副作用。core 按“随指令携带的早期异常 → 有效 CSR 非法访问 → LSU 访问错误”合并 `final_mem_exception`。`trap_take` 只在 `mem_valid && final_mem_exception.valid && !mem_response_wait` 时有效；该周期的时钟沿把 `mem_pc`、`final_mem_exception.cause/value` 分别写入 `mepc`、`mcause`、`mtval`。`trap_redirect` 取自 `mtvec` 定义的 trap 入口。
 
-`trap_valid/pc/cause/value` 与该次 `trap_take` 一一对应，不报告尚未提交的早期异常。CSR 指令访问端口和 `mret` 端口在后续增量中加入，不改变这里的异常提交接口。
+同一个提交沿上，`final_mem_exception.valid=1` 时禁止该异常指令的显式 CSR 写，只执行同步 trap 自动更新；无异常且合法的 CSR 指令才按 `csr_write_enable` 更新目标 CSR。未来异步中断与同周期显式 CSR 写的组合顺序不在本契约中预判。
+
+`trap_valid/pc/cause/value` 与该次 `trap_take` 一一对应，不报告尚未提交的早期异常。`mret` 端口在后续 Machine Mode 增量中加入，不改变这里的异常提交接口。
 
 ### 9.8 Core
 
-Core 根据 MEM/WB 当前状态生成 WB bus 和退休信息，仲裁 trap/EX redirect，根据动作和各级候选状态在唯一时序更新点更新四组流水寄存器。同周期存在更老 WB retire 和较年轻 MEM trap 时，两组跟踪输出都可以有效。
+Core 根据 MEM/WB 当前状态生成 WB bus 和退休信息；在 MEM 组装 LSU/CSR 结果并合并 `final_mem_exception`；仲裁 trap/EX redirect；再根据动作和各级候选状态在唯一时序更新点更新四组流水寄存器。同周期存在更老 WB retire 和较年轻 MEM trap 时，两组跟踪输出都可以有效。
 
 ### 9.9 组合依赖顺序
 
@@ -586,10 +628,16 @@ IF/ID_q + WB bus
   → forwarding/hazard
 
 ID/EX_q + forwarding values
-  → EX candidate + raw redirect
+  → EX candidate + CSR source snapshot + raw redirect
 
 EX candidate + EX/MEM_q + dmem
-  → LSU events + MEM/WB candidate
+  → LSU events + load result + lsu_exception
+
+EX/MEM_q + CSR state
+  → csr_read_data + csr_access_illegal
+
+early exception + (csr_access_valid && csr_access_illegal) + lsu_exception
+  → final_mem_exception + MEM/WB candidate + trap event
 
 所有事件
   → pipeline actions

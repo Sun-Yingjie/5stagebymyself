@@ -90,6 +90,19 @@ v0.2 先建立可验证的同步异常闭环，再叠加中断。该阶段冻结
 
 `FENCE.I` 属于独立的 Zifencei 扩展，不包含在本阶段。后续若增加 Cache、store buffer、多笔在途事务或允许数据通路修改指令存储器，必须重新评估 `FENCE`/`FENCE.I` 的实现，不能继续无条件沿用 no-op。
 
+### 4.2 Zicsr 增量边界
+
+Zicsr 增加 `CSRRW/CSRRS/CSRRC/CSRRWI/CSRRSI/CSRRCI` 六条原子 CSR 读改写指令。该扩展定义访问机制，但不单独规定必须存在的具体 CSR；本项目可访问的 Machine CSR 地址、字段和合法化规则由最小 Machine Mode 增量冻结。
+
+实现按以下边界推进：
+
+- 先独立验证三类 CSR 运算、寄存器/立即数源和读写抑制规则；
+- CSR 指令在 ID 译码，在 EX 固化源操作数，在 MEM 对当前 CSR 值执行原子读改写并提交；
+- 普通 CSR 写与同步异常自动更新共用唯一状态所有者；异常指令禁止显式 CSR 写，由该所有者完成 trap 自动更新，异步中断与同周期更新顺序留到 Machine interrupt 增量冻结；
+- CSR 返回的旧值经 MEM/WB 写入 `rd`，不增加通用寄存器堆写端口；
+- 不存在、权限不足或对只读 CSR 发起真实写操作时，产生 illegal-instruction 异常且不产生 CSR/通用寄存器副作用；
+- 本增量不声明 Zicntr、Zihpm 或任何尚未实现的 CSR 集合。
+
 ## 5. 当前明确不做的内容
 
 - 乱序执行、超标量和多发射；

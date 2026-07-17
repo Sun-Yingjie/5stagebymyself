@@ -41,7 +41,7 @@
 | `rv32_alu` | 算术、逻辑、移位以及 signed/unsigned 行为 |
 | `rv32_branch_compare` | 六类条件分支的有符号和无符号比较 |
 | `rv32_regfile` | 双读单写、`x0` 恒零和同步写入；WB→ID 同周期旁路在 `rv32_idu` 中验证 |
-| `rv32_forward_unit` | 两级前递优先级、`x0` 排除、load-use 检测 |
+| `rv32_forward_unit` | 两级前递优先级、`x0` 排除、late-result hazard 检测 |
 | `rv32_pipeline_ctrl` | 每种事件对应的 `LOAD/HOLD/CLEAR` 动作和优先级 |
 | `rv32_lsu` 局部功能 | load 扩展、store 数据移位、`wstrb` 和地址低位处理 |
 
@@ -54,7 +54,7 @@
 定向测试分为四组：
 
 1. **单指令语义**：每条已实现 RV32I 指令至少一个正常用例和必要边界用例；
-2. **数据冒险**：EX/MEM 前递、MEM/WB 前递、WB→ID 旁路、连续生产者优先级和 load-use；
+2. **数据冒险**：EX/MEM 前递、MEM/WB 前递、WB→ID 旁路、连续生产者优先级和 late-result hazard；
 3. **控制冒险**：taken/not-taken branch、JAL、JALR、重定向目标和错误路径清除；
 4. **访存副作用**：不同宽度的 load/store、store data 前递以及一次且仅一次的写入。
 
@@ -192,6 +192,17 @@ retire_rd_data
 
 每个异常用例都要同时提供正向证据和负向证据：既检查预期 trap 出现，也检查本不应发生的寄存器写、存储器请求、普通退休和重复重定向没有出现。
 
+### 3.6 Zicsr
+
+- 六条 CSR 指令全部覆盖寄存器和立即数源；
+- `CSR_WRITE/SET/CLEAR` 对 0、全 1、交错位图和普通数据的候选写值正确；
+- CSRRW[I] 在 `rd=x0` 时不读但仍写，写入零也不能被错误抑制；
+- CSRRS/CSRRC 在编码 `rs1=x0` 时只读不写，`rs1!=x0` 但运行值为零时仍保持写使能；
+- CSRRSI/CSRRCI 在 `uimm=0` 时只读不写，非零立即数正确零扩展；
+- 合法只读访问、对只读 CSR 的真实写、不存在地址和权限错误分别得到正确结果；非法访问必须检查 `trap_pc`、cause 2、值为完整指令字的 `trap_value`，以及早期异常优先级；
+- CSR→消费者的一拍 late-result stall、MEM/WB 前递和连续 CSR 原子顺序；
+- 被冲刷或已有异常的 CSR 指令不形成真实 CSR 读写访问；访问非法的 CSR 指令不产生读写副作用、不写 `rd`、不普通退休。
+
 ## 4. 断言计划
 
 断言分为“设计不变量”和“协议时序”。初期可放在 testbench checker 中；当层次稳定后，再决定哪些断言绑定到 RTL 层次。断言仅用于检查，不参与综合功能。
@@ -222,9 +233,9 @@ retire_rd_data
 
 - `HOLD` 时对应流水寄存器的全部字段保持；
 - `CLEAR` 后对应流水寄存器 `valid` 为零；
-- load-use 事件使 PC、IF/ID 保持，并清除 ID/EX；
+- late-result hazard 事件使 PC、IF/ID 保持，并清除 ID/EX；
 - qualified redirect 只在流水控制选中 EX redirect 时产生；
-- MEM wait 的优先级高于年轻 redirect 和 load-use；
+- MEM wait 的优先级高于年轻 redirect 和 late-result hazard；
 - MEM wait 期间 MEM/WB 中原有老指令最多完成一次，随后保持为空。
 
 ### 4.4 精确同步异常
@@ -239,6 +250,17 @@ retire_rd_data
 - trap redirect 优先于年轻 EX redirect，并使已在途的旧路径取指响应失效；
 - trap 后所有年轻指令不得在未来退休或产生外部副作用；
 - 访问错误的 load 不得写回，访问错误的 store 不得普通退休，且存储器模型必须证明失败 store 没有架构可见写入。
+
+### 4.5 CSR
+
+- CSR 状态只能由 MEM 中获准提交的最老指令或更高优先级 trap 自动更新修改；
+- 被 flush 或已携带异常的 CSR 指令不得拉高有效 CSR 读写访问；非法访问不得触发 CSR 读副作用或写副作用；
+- `csr_access_valid=0` 时 `csr_access_illegal=0`，没有有效合法读取时 `csr_read_data=0`；
+- `csr_write_enable=0` 时，即使候选写值变化也不得修改状态或触发只读写异常；
+- CSR 指令写入 `rd` 的数据必须是修改前的旧 CSR 值；
+- 同一条 CSR 指令最多产生一次 CSR 写和一次普通退休；
+- 非法 CSR 访问的普通 retire、通用寄存器写和 CSR 写均为零；
+- 紧邻 CSR 结果消费者不得使用 EX/MEM 中尚未形成的旧值。
 
 断言失败必须定位根因。不得用全局关闭断言或宽泛 waiver 把未理解的问题变成“通过”。
 
@@ -450,10 +472,11 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 
 1. 先用文档 PR 冻结精确同步异常契约，不修改 RTL；
 2. 补齐 RV32I 剩余编码和行为，使异常来源能够按统一数据包表达；
-3. 独立加入 Zicsr 指令数据通路和 CSR 读改写单元测试；
-4. 接入最小 Machine Mode trap 状态、MEM 提交、trap redirect 和 `mret`；
-5. 在同步异常闭环稳定后加入 RV32M 多周期单元；
-6. 最后独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
-7. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
+3. 先加入无状态 CSR 读改写运算叶子及其单元测试；
+4. 再加入 Zicsr 语义译码、逐级承载字段、late-result hazard 与写回数据通路；
+5. 接入唯一 CSR 状态所有者、访问合法性检查和 MEM 最终异常合并，再完成最小 Machine Mode trap 状态、trap redirect 与 `mret`；
+6. 在同步异常闭环稳定后加入 RV32M 多周期单元；
+7. 最后独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
+8. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
 
 每个增量都遵循“先讲清架构行为和逐周期路径，再修改最小 RTL，再补定向测试与断言，最后跑全回归”的学习闭环。旧回归必须始终通过，不能依靠同时修改多个未验证模块来跨过中间失败状态。
