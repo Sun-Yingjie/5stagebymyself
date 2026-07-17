@@ -107,7 +107,6 @@ module tb_rv32_core;
     int unsigned total_dmem_request_count;
     int unsigned total_trap_count;
 
-    logic trap_with_raw_redirect_seen;
 
     logic [31:0] program_pc;
     logic        scenario_active;
@@ -493,7 +492,6 @@ module tb_rv32_core;
             mem_response_wait_count = 0;
             imem_request_stall_count = 0;
 
-            trap_with_raw_redirect_seen  = 1'b0;
 
             scenario_cycle_count = 0;
             scenario_check_count = 0;
@@ -1674,12 +1672,31 @@ module tb_rv32_core;
             install_trap_handler(5'd3, 32'd3);
 
             release_reset();
-            wait_for_completion();
+            while (
+                (trap_valid !== 1'b1) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
 
             check_condition(
-                trap_with_raw_redirect_seen,
-                "MEM trap was not observed beside younger taken branch"
+                trap_valid === 1'b1,
+                "MEM trap was not observed before timeout"
             );
+            check_condition(
+                (dut.raw_redirect.valid === 1'b1) &&
+                (dut.raw_redirect.target === 32'h0000_0010),
+                "younger taken branch did not present its raw redirect beside trap"
+            );
+            check_condition(
+                (dut.redirect_commit === 1'b0) &&
+                (dut.qualified_redirect === dut.trap_redirect) &&
+                (dut.qualified_redirect.target === TRAP_VECTOR),
+                "younger branch was not suppressed by the older MEM trap"
+            );
+
+            wait_for_completion();
             check_condition(
                 redirect_count == 0,
                 "younger branch redirect committed beside MEM trap"
@@ -2219,9 +2236,6 @@ module tb_rv32_core;
                     "faulting MEM instruction formed a retirement candidate"
                 );
 
-                if (dut.raw_redirect.valid) begin
-                    trap_with_raw_redirect_seen = 1'b1;
-                end
                 if (
                     dut.ex_mem_active_candidate.valid &&
                     dut.ex_mem_active_candidate.mem_ctrl.memory_write
@@ -2465,7 +2479,6 @@ module tb_rv32_core;
         total_dmem_request_count = 0;
         total_trap_count = 0;
 
-        trap_with_raw_redirect_seen = 1'b0;
 
         imem_outstanding_count = 0;
         dmem_outstanding_count = 0;
