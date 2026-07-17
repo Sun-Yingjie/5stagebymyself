@@ -58,7 +58,7 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-[PASS] rv32_core: 11/11 scenarios, 106 retirements, 4 traps, 19 DMem requests, 2630 checks
+[PASS] rv32_core: 11/11 scenarios, 106 retirements, 4 traps, 20 DMem requests, 2669 checks
 [PASS] v0.1 regression completed: 14/14 unit TBs and core TB passed
 ```
 

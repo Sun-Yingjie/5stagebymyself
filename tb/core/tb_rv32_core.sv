@@ -1462,11 +1462,20 @@ module tb_rv32_core;
     endtask
 
     task automatic scenario_precise_illegal_trap;
+        logic [31:0] older_load;
         logic [31:0] illegal_instruction;
         logic [31:0] younger_store;
         begin
             begin_scenario("precise_illegal_trap");
+            dmem_request_enable  = 1'b0;
+            dmem_response_enable = 1'b0;
 
+            older_load = instruction_load(
+                FUNCT3_LW,
+                5'd1,
+                5'd0,
+                32'h0000_0040
+            );
             illegal_instruction = 32'hffff_ffff;
             younger_store = encoder_s(
                 FUNCT3_SW,
@@ -1475,11 +1484,13 @@ module tb_rv32_core;
                 32'h0000_0100
             );
 
+            u_dmem.write_word(32'h0000_0040, 32'h1122_3344);
             emit_writeback_instruction(
-                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'd1),
+                older_load,
                 5'd1,
-                32'd1
+                32'h1122_3344
             );
+            expect_dmem_request(1'b0, 32'h0000_0040, '0, '0);
 
             u_imem.write_word(program_pc, illegal_instruction);
             expect_trap(
@@ -1492,7 +1503,139 @@ module tb_rv32_core;
             emit_squashed_instruction(younger_store);
             install_trap_handler(5'd2, 32'd2);
 
+            minimum_ex_request_wait_count   = 1;
+            minimum_mem_response_wait_count = 1;
+
             release_reset();
+            while (
+                !(
+                    (dut.ex_request_wait === 1'b1) &&
+                    (dut.id_ex_q.valid === 1'b1) &&
+                    (dut.id_ex_q.pc === 32'h0000_0000) &&
+                    (dut.id_ex_q.instruction === older_load) &&
+                    (dut.if_id_q.valid === 1'b1) &&
+                    (dut.if_id_q.pc === 32'h0000_0004) &&
+                    (dut.if_id_q.instruction === illegal_instruction) &&
+                    (dut.fetch_response_available === 1'b1) &&
+                    (imem_rsp_data === younger_store)
+                ) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
+            check_condition(
+                (dut.ex_request_wait === 1'b1) &&
+                (dut.id_ex_q.valid === 1'b1) &&
+                (dut.id_ex_q.pc === 32'h0000_0000) &&
+                (dut.id_ex_q.instruction === older_load) &&
+                (dut.if_id_q.valid === 1'b1) &&
+                (dut.if_id_q.pc === 32'h0000_0004) &&
+                (dut.if_id_q.instruction === illegal_instruction) &&
+                (dut.fetch_response_available === 1'b1) &&
+                (imem_rsp_data === younger_store),
+                "could not align load request, illegal instruction, and store response"
+            );
+
+            @(posedge clk);
+            #1;
+            check_condition(
+                (dut.ex_request_wait === 1'b1) &&
+                (dut.id_ex_q.instruction === older_load) &&
+                (dut.if_id_q.instruction === illegal_instruction) &&
+                (dut.fetch_response_available === 1'b1) &&
+                (imem_rsp_data === younger_store),
+                "aligned pre-request collision state was not held for one full cycle"
+            );
+
+            @(negedge clk);
+            dmem_request_enable = 1'b1;
+
+            while (
+                !(
+                    (dut.mem_response_wait === 1'b1) &&
+                    (dut.u_lsu.outstanding_q === 1'b1) &&
+                    (dmem_rsp_valid === 1'b0) &&
+                    (dut.ex_mem_q.valid === 1'b1) &&
+                    (dut.ex_mem_q.pc === 32'h0000_0000) &&
+                    (dut.ex_mem_q.mem_ctrl.memory_read === 1'b1) &&
+                    (dut.id_ex_q.valid === 1'b1) &&
+                    (dut.id_ex_q.pc === 32'h0000_0004) &&
+                    (dut.if_id_q.valid === 1'b1) &&
+                    (dut.if_id_q.pc === 32'h0000_0008)
+                ) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
+            check_condition(
+                (dut.mem_response_wait === 1'b1) &&
+                (dut.u_lsu.outstanding_q === 1'b1) &&
+                (dmem_rsp_valid === 1'b0) &&
+                (dut.ex_mem_q.valid === 1'b1) &&
+                (dut.ex_mem_q.pc === 32'h0000_0000) &&
+                (dut.ex_mem_q.mem_ctrl.memory_read === 1'b1) &&
+                (dut.id_ex_q.valid === 1'b1) &&
+                (dut.id_ex_q.pc === 32'h0000_0004) &&
+                (dut.if_id_q.valid === 1'b1) &&
+                (dut.if_id_q.pc === 32'h0000_0008),
+                "could not align older load, illegal instruction, and younger store"
+            );
+
+            @(posedge clk);
+            #1;
+            check_condition(
+                (dut.mem_response_wait === 1'b1) &&
+                (dut.u_lsu.outstanding_q === 1'b1) &&
+                (dmem_rsp_valid === 1'b0) &&
+                (dut.ex_mem_q.valid === 1'b1) &&
+                (dut.ex_mem_q.pc === 32'h0000_0000) &&
+                (dut.ex_mem_q.mem_ctrl.memory_read === 1'b1) &&
+                (dut.id_ex_q.valid === 1'b1) &&
+                (dut.id_ex_q.pc === 32'h0000_0004) &&
+                (dut.if_id_q.valid === 1'b1) &&
+                (dut.if_id_q.pc === 32'h0000_0008),
+                "aligned trap collision state was not held for one full cycle"
+            );
+
+            @(negedge clk);
+            dmem_response_enable = 1'b1;
+
+            @(posedge clk);
+            #1;
+            check_condition(
+                (trap_valid === 1'b1) &&
+                (retire_valid === 1'b1) &&
+                (dut.ex_mem_q.pc === 32'h0000_0004) &&
+                (dut.mem_wb_q.pc === 32'h0000_0000),
+                "controlled older-WB and illegal-trap collision did not form"
+            );
+            check_condition(
+                (retire_pc === 32'h0000_0000) &&
+                (retire_instr === older_load) &&
+                (retire_rd_we === 1'b1) &&
+                (retire_rd_addr === 5'd1) &&
+                (retire_rd_data === 32'h1122_3344),
+                "older load retirement payload was wrong beside trap"
+            );
+            check_condition(
+                (trap_pc === 32'h0000_0004) &&
+                (trap_cause === EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION) &&
+                (trap_value === illegal_instruction),
+                "illegal trap payload was wrong beside older retirement"
+            );
+            check_condition(
+                (dut.ex_mem_active_candidate.valid === 1'b1) &&
+                (dut.ex_mem_active_candidate.pc === 32'h0000_0008) &&
+                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1) &&
+                (dmem_req_ready === 1'b1) &&
+                (dmem_req_valid === 1'b0) &&
+                (dut.u_lsu.request_fire === 1'b0) &&
+                (dut.ex_request_block === 1'b1),
+                "ready younger store was not blocked during controlled trap collision"
+            );
+
             wait_for_completion();
 
             check_condition(
@@ -2099,10 +2242,11 @@ module tb_rv32_core;
                     dut.ex_mem_active_candidate.mem_ctrl.memory_write
                 ) begin
                     check_condition(
+                        dmem_req_ready &&
                         !dmem_req_valid &&
                         !dut.u_lsu.request_fire &&
                         dut.ex_request_block,
-                        "trap did not block younger store inside LSU"
+                        "trap did not block a ready younger store inside LSU"
                     );
                     trap_blocked_younger_store_seen = 1'b1;
                 end
