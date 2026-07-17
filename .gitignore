@@ -62,6 +62,7 @@ mapped/
 spyglass-*/
 .spyglass*/
 *.swl
+/scripts/spyglass/rv32_core/
 
 # Generated artifacts under project output folders
 waves/*
