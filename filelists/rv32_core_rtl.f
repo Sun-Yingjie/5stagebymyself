@@ -1,0 +1,13 @@
+rtl/rv32_pkg.sv
+rtl/rv32_imm_gen.sv
+rtl/rv32_alu.sv
+rtl/rv32_branch_compare.sv
+rtl/rv32_decoder.sv
+rtl/rv32_regfile.sv
+rtl/rv32_forward_unit.sv
+rtl/rv32_pipeline_ctrl.sv
+rtl/rv32_idu.sv
+rtl/rv32_exu.sv
+rtl/rv32_ifu.sv
+rtl/rv32_lsu.sv
+rtl/rv32_core.sv

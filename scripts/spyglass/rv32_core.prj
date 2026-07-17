@@ -1,0 +1,6 @@
+read_file -type sourcelist filelists/rv32_core_rtl.f
+
+set_option top rv32_core
+set_option language_mode mixed
+set_option enableSV yes
+set_option sort yes

@@ -59,6 +59,9 @@ alib-52/
 analyzed/
 unmapped/
 mapped/
+spyglass-*/
+.spyglass*/
+*.swl
 
 # Generated artifacts under project output folders
 waves/*
@@ -73,3 +76,5 @@ reports/*
 *.mem
 *.dump
 *.dis
+
+.gitignore
