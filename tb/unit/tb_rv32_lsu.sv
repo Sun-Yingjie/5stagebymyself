@@ -5,12 +5,13 @@ module tb_rv32_lsu;
 
     import rv32_pkg::*;
 
-    localparam int unsigned TEST_CASE_COUNT = 13;
+    localparam int unsigned TEST_CASE_COUNT = 14;
 
     logic       clk;
     logic       rst;
     ex_mem_t    ex_mem_candidate;
     ex_mem_t    ex_mem_q;
+    logic       ex_request_block;
 
     logic        dmem_req_valid;
     logic        dmem_req_ready;
@@ -37,6 +38,7 @@ module tb_rv32_lsu;
         .rst              (rst),
         .ex_mem_candidate (ex_mem_candidate),
         .ex_mem_q         (ex_mem_q),
+        .ex_request_block (ex_request_block),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
         .dmem_req_write   (dmem_req_write),
@@ -66,6 +68,7 @@ module tb_rv32_lsu;
         test_reset_and_idle_protocol();
         test_nonmemory_passthrough();
         test_request_qualification();
+        test_external_request_block();
         test_load_request_backpressure();
         test_store_lane_matrix();
         test_load_extension_matrix();
@@ -98,10 +101,86 @@ module tb_rv32_lsu;
             rst              = 1'b0;
             ex_mem_candidate = '0;
             ex_mem_q         = '0;
+            ex_request_block = 1'b0;
             dmem_req_ready   = 1'b0;
             dmem_rsp_valid   = 1'b0;
             dmem_rsp_rdata   = '0;
             dmem_rsp_error   = 1'b0;
+        end
+    endtask
+
+    task automatic test_external_request_block;
+        int unsigned errors_before;
+        begin
+            errors_before = error_count;
+            reset_dut();
+
+            set_memory_candidate(
+                1'b0,
+                1'b1,
+                MEM_SIZE_WORD,
+                1'b0,
+                32'h0000_4800,
+                32'hcafe_babe,
+                32'h0000_0340
+            );
+            ex_request_block = 1'b1;
+            dmem_req_ready   = 1'b1;
+            settle();
+
+            check_condition(
+                !dmem_req_valid && !ex_request_wait && !dut.request_fire,
+                "external block suppresses ready request and internal fire"
+            );
+
+            tick();
+            check_condition(
+                !dut.outstanding_q && !dmem_rsp_ready &&
+                    !mem_response_wait,
+                "blocked request cannot create internal outstanding state"
+            );
+
+            ex_request_block = 1'b0;
+            dmem_req_ready   = 1'b0;
+            settle();
+            check_condition(
+                dmem_req_valid && ex_request_wait,
+                "releasing block exposes the preserved request"
+            );
+
+            dmem_req_ready = 1'b1;
+            settle();
+            check_condition(
+                dmem_req_valid && !ex_request_wait,
+                "released request can handshake normally"
+            );
+
+            tick();
+            ex_mem_q         = ex_mem_candidate;
+            ex_mem_candidate = '0;
+            dmem_req_ready   = 1'b0;
+            settle();
+            check_condition(
+                dut.outstanding_q && dmem_rsp_ready,
+                "released handshake alone creates outstanding state"
+            );
+
+            ex_request_block = 1'b1;
+            dmem_rsp_valid   = 1'b1;
+            settle();
+            check_condition(
+                dmem_rsp_ready && !mem_response_wait,
+                "request block does not prevent an old response completing"
+            );
+            tick();
+            set_defaults();
+            settle();
+            check_condition(
+                !dut.outstanding_q,
+                "completed released request clears outstanding state"
+            );
+
+            report_case(errors_before, "external request block");
         end
     endtask
 

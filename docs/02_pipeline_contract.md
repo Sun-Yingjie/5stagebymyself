@@ -522,6 +522,12 @@ qualified_redirect = trap_take
 - 为保持精确异常，存储适配器必须保证报告失败的 store 不产生不可撤销的架构可见写入。
 - 更老的 MEM 异常优先于更年轻的 branch、load/store 或协处理器请求。
 
+更老的 MEM 最终异常必须通过 LSU 内部的 `ex_request_block` 阻止年轻 EX
+load/store。该信号必须在 `dmem_req_valid`、`request_fire` 和 `outstanding`
+状态更新之前生效，不能只在 core 顶层屏蔽 LSU 已生成的外部 valid。当前结构增量先把
+core 输入固定为 0；接入 CSR/trap owner 时再由
+`ex_mem_q.valid && final_mem_exception.valid` 驱动。
+
 v0.2 将不支持或保留的编码转换为 illegal-instruction trap，不再依赖仿真断言充当架构行为。
 
 ## 10. 本层结论

@@ -86,6 +86,7 @@ module rv32_core #(
 
     logic fetch_response_available;
     logic late_result_hazard;
+    logic ex_request_block;
     logic ex_request_wait;
     logic mem_response_wait;
     logic redirect_commit;
@@ -153,6 +154,10 @@ module rv32_core #(
 
     assign raw_redirect =
         ex_hold_valid_q ? ex_redirect_hold_q : ex_raw_redirect;
+
+    // The final MEM exception path will drive this qualification when the
+    // standalone CSR/trap owner is integrated. Keep v0.1 behavior unchanged.
+    assign ex_request_block = 1'b0;
 
     always_comb begin
         ex_mem_forward_value = '0;
@@ -229,6 +234,7 @@ module rv32_core #(
         .rst              (rst),
         .ex_mem_candidate (ex_mem_active_candidate),
         .ex_mem_q         (ex_mem_q),
+        .ex_request_block (ex_request_block),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
         .dmem_req_write   (dmem_req_write),

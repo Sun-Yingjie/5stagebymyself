@@ -4,6 +4,7 @@ module rv32_lsu (
 
     input  rv32_pkg::ex_mem_t    ex_mem_candidate,
     input  rv32_pkg::ex_mem_t    ex_mem_q,
+    input  logic                 ex_request_block,
 
     output logic                 dmem_req_valid,
     input  logic                 dmem_req_ready,
@@ -90,6 +91,7 @@ module rv32_lsu (
 
     assign dmem_req_valid = // EX阶段能发出访存请求：MEM阶段的指令不是异常指令（防止要被重刷的EX阶段访存指令产生副作用）；访存通道空闲；EX阶段是访存指令；
         !rst &&
+        !ex_request_block &&
         !mem_exception.valid &&
         request_slot_available &&
         ex_memory_access;

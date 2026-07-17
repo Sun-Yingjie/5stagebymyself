@@ -183,9 +183,11 @@ trap_valid、trap_pc、trap_cause、trap_value
 
 1. core 统一按“早期异常 > CSR illegal > LSU access fault”形成
    `final_mem_exception`；
-2. MEM 中更老的 CSR illegal 必须进入 LSU 内部请求资格，禁止年轻 EX load/store
-   在同周期握手。不得只在 LSU 外部与掉 `dmem_req_valid`，否则内部
-   `request_fire/outstanding` 状态会与外部握手不一致。
+2. LSU 已提供内部 `ex_request_block` 资格输入；接入时必须由
+   `ex_mem_q.valid && final_mem_exception.valid` 驱动，
+   禁止更老 CSR illegal 同周期的年轻 EX load/store 握手。不得在 LSU 输出端
+   另行与掉 `dmem_req_valid`，否则内部 `request_fire/outstanding` 状态会与外部
+   握手不一致。
 
 ## 9. 最低 directed test 矩阵
 

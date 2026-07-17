@@ -100,6 +100,7 @@ uses_rs1
 ### 3.5 `rv32_lsu`
 
 - 使用 EX 计算结果形成数据请求；
+- 在 LSU 内部使用 `ex_request_block` 阻止较老 MEM 异常之后的年轻 EX 请求进入握手和 outstanding 状态；
 - 管理请求是否已经握手以及响应是否仍在等待；
 - 输出 EX 请求等待和 MEM 响应等待事件；
 - 生成 `wstrb` 和对齐后的 store 写数据；
@@ -548,6 +549,7 @@ raw_redirect
 ```text
 ex_mem_candidate
 ex_mem_q
+ex_request_block
 dmem_req_ready
 dmem_rsp_valid/rdata/error
 ```
@@ -563,7 +565,7 @@ load_result
 lsu_exception
 ```
 
-`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。LSU 只报告数据访问错误 `lsu_exception`；core 把 load 结果字段、CSR 结果字段和公共 EX/MEM 字段组装为完整 `mem_wb_candidate`。
+`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。`ex_request_block` 必须在 LSU 内部参与 `dmem_req_valid` 和 `request_fire` 的资格判断；不得只在 core 的 LSU 输出端与掉 `dmem_req_valid`，否则外部握手与 `outstanding` 状态会分裂。当前 core 固定输入为 0 以保持 v0.1 行为，接入最终 MEM 异常路径时再由更老异常资格驱动。LSU 只报告数据访问错误 `lsu_exception`；core 把 load 结果字段、CSR 结果字段和公共 EX/MEM 字段组装为完整 `mem_wb_candidate`。
 
 ### 9.6 Pipeline control
 
