@@ -4,8 +4,8 @@
 
 - 验证日期：2026-07-17
 - 冻结标识：`v0.1-rtl-baseline`
-- RTL 基线：`dc287a6`；后续冻结准备未修改处理器 RTL
-- RTL/Test 回归基线：`85069b4`
+- RTL 基线：`b12d254`；后续冻结准备未修改处理器 RTL
+- RTL/Test 回归基线：`a57e1b0`
 - Icarus Verilog：13.0 stable
 - Verilator：5.048
 - Core 定向测试：7/7 场景通过
