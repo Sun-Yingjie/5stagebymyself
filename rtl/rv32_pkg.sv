@@ -7,8 +7,13 @@ package rv32_pkg;
     localparam logic [6:0] OPCODE_BRANCH    = 7'b110_0011;
     localparam logic [6:0] OPCODE_LOAD      = 7'b000_0011;
     localparam logic [6:0] OPCODE_STORE     = 7'b010_0011;
+    localparam logic [6:0] OPCODE_MISC_MEM  = 7'b000_1111;
     localparam logic [6:0] OPCODE_OP_IMM    = 7'b001_0011;
     localparam logic [6:0] OPCODE_OP        = 7'b011_0011;
+    localparam logic [6:0] OPCODE_SYSTEM    = 7'b111_0011;
+// full instruction encodings
+    localparam logic [31:0] INSTRUCTION_ECALL  = 32'h0000_0073;
+    localparam logic [31:0] INSTRUCTION_EBREAK = 32'h0010_0073;
 // funct7
     localparam logic [6:0] FUNCT7_BASE      = 7'b000_0000;
     localparam logic [6:0] FUNCT7_SUB_SRA   = 7'b010_0000;
@@ -38,13 +43,20 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_SB        = 3'b000;
     localparam logic [2:0] FUNCT3_SH        = 3'b001;
     localparam logic [2:0] FUNCT3_SW        = 3'b010;
+    // memory ordering
+    localparam logic [2:0] FUNCT3_FENCE     = 3'b000;
     // jalr
     localparam logic [2:0] FUNCT3_JALR      = 3'b000;
 // exception
+    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED = 32'd0;
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
     localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION      = 32'd2;
+    localparam logic [31:0] EXCEPTION_CAUSE_BREAKPOINT               = 32'd3;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED  = 32'd4;
     localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT        = 32'd5;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED = 32'd6;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT       = 32'd7;
+    localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE  = 32'd11;
 // pipeline control
     typedef enum logic [1:0] {  // how to update pipeline reg
         PIPE_LOAD           = 2'b00, // update
@@ -152,6 +164,8 @@ package rv32_pkg;
         logic            uses_rs2;
         immediate_type_e immediate_type;
         logic            illegal_instruction;
+        logic            environment_call;
+        logic            breakpoint;
         ex_ctrl_t        ex_ctrl;
         mem_ctrl_t       mem_ctrl;
         wb_ctrl_t        wb_ctrl;

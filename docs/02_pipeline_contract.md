@@ -184,6 +184,7 @@ rs2_data → 前递选择 → rs2_exec ─┬→ ALU 操作数 B
 | branch | 是 | 是 | PC | B-immediate | 分支目标地址 | 无 |
 | JAL | 否 | 否 | PC | J-immediate | 跳转目标地址 | `WB_PC_PLUS_4` |
 | JALR | 是 | 否 | `rs1_exec` | I-immediate | 跳转目标地址 | `WB_PC_PLUS_4` |
+| FENCE | 否 | 否 | 无架构用途 | 无架构用途 | 无副作用，通过流水 | 无 |
 
 store 写数据独立取自 `rs2_exec`。branch 使用比较逻辑比较 `rs1_exec` 和 `rs2_exec`，主 ALU 同时计算 `PC + immediate`。
 
@@ -231,6 +232,12 @@ illegal_instruction
 ```
 
 `uses_rs1` 和 `uses_rs2` 必须来自真实指令语义。冒险检测不能只比较指令字中的 `rs1/rs2` 位域，因为 LUI、AUIPC 和 JAL 等指令在相同比特位置存在编码字段，但并不读取对应通用寄存器。
+
+### 6.5 `FENCE` 流水行为
+
+`FENCE` 在 ID 识别为合法指令，但不读取 `rs1/rs2`，不写 `rd`，不产生数据请求，也不产生 redirect。它保持 `valid=1` 依次通过 ID/EX、EX/MEM 和 MEM/WB，并在 WB 产生一次不写通用寄存器的普通退休事件。
+
+decoder 接受 `MISC-MEM` opcode 下 `funct3=000` 的全部 `FENCE` 配置，忽略编码中的 `fm/pred/succ/rs1/rd` 字段。`funct3=001` 是未实现的 `FENCE.I`，仍产生 illegal-instruction 异常。
 
 ## 7. 数据请求的流水边界
 

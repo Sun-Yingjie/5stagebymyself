@@ -195,6 +195,41 @@ module rv32_decoder(
                 end
             end
 
+            OPCODE_MISC_MEM: begin
+                if (instruction[14:12] == FUNCT3_FENCE) begin
+                    // This in-order, blocking memory system already provides
+                    // conservative FENCE ordering. Keep the instruction valid
+                    // for retirement, but add no architectural side effects.
+                    // This implementation conservatively treats every
+                    // fm/pred/succ combination as a full fence; base RV32I
+                    // also requires rs1/rd and reserved configurations to be
+                    // accepted rather than decoded as illegal.
+                    decode_ctrl.illegal_instruction = 1'b0;
+                    decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                    decode_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+                end
+            end
+
+            OPCODE_SYSTEM: begin
+                case (instruction)
+                    INSTRUCTION_ECALL: begin
+                        decode_ctrl.illegal_instruction = 1'b0;
+                        decode_ctrl.environment_call = 1'b1;
+                    end
+
+                    INSTRUCTION_EBREAK: begin
+                        decode_ctrl.illegal_instruction = 1'b0;
+                        decode_ctrl.breakpoint = 1'b1;
+                    end
+
+                    default: begin
+                        // Zicsr and privileged SYSTEM instructions are added
+                        // by later, independently verified increments.
+                        decode_ctrl.illegal_instruction = 1'b1;
+                    end
+                endcase
+            end
+
             OPCODE_OP_IMM: begin
                 case (instruction[14:12])
                     FUNCT3_ADD_SUB: begin

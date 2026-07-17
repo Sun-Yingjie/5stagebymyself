@@ -122,7 +122,9 @@ retire_rd_data
 - 六类条件分支的 taken 和 not-taken；
 - `JAL`、`JALR`，包括 JALR 目标最低位清零；
 - `LB/LBU/LH/LHU/LW`；
-- `SB/SH/SW`。
+- `SB/SH/SW`；
+- `FENCE` 的标准编码、`FENCE.TSO` 编码和带非零保留字段的编码均作为合法无副作用指令退休；
+- `FENCE.I` 在未声明 Zifencei 时仍按非法指令处理。
 
 需要特别覆盖 `0`、`1`、`-1`、最高位为 1、最大正数、最小负数以及移位量边界。
 
@@ -176,7 +178,8 @@ retire_rd_data
 异常增量必须为每一种已定义 cause 建立至少一个定向用例，并显式检查 `trap_pc/cause/value`、重定向目标和副作用：
 
 - 取指访问错误；
-- 非法指令、`ECALL` 和 `EBREAK`；
+- 非法指令、`ECALL` 和 `EBREAK`，并检查后两者分别产生 cause 11 和 cause 3、`trap_value=0`；
+- 修改 `ECALL/EBREAK` 的 `rd/rs1/funct3/funct12` 后，保留或未实现的 SYSTEM 编码必须成为 illegal instruction，不能误识别为请求 trap；
 - taken branch、JAL 和 JALR 的目标地址未对齐，另用 not-taken branch 证明其不产生未对齐异常；
 - byte/half/word load/store 的合法对齐边界和未对齐地址；
 - load/store 访问错误响应；

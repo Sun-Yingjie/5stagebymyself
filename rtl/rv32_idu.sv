@@ -80,15 +80,25 @@ module rv32_idu (
         id_ex_candidate.wb_ctrl  = decode_ctrl.wb_ctrl;
 
         id_ex_candidate.exception = if_id_q.exception;
-        if (
-            if_id_q.valid &&
-            !if_id_q.exception.valid &&
-            decode_ctrl.illegal_instruction
-        ) begin
-            id_ex_candidate.exception.valid = 1'b1;
-            id_ex_candidate.exception.cause =
-                EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
-            id_ex_candidate.exception.value = if_id_q.instruction;
+        if (if_id_q.valid && !if_id_q.exception.valid) begin
+            if (decode_ctrl.environment_call) begin
+                id_ex_candidate.exception.valid = 1'b1;
+                id_ex_candidate.exception.cause =
+                    EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE;
+                id_ex_candidate.exception.value = 32'b0;
+            end
+            else if (decode_ctrl.breakpoint) begin
+                id_ex_candidate.exception.valid = 1'b1;
+                id_ex_candidate.exception.cause =
+                    EXCEPTION_CAUSE_BREAKPOINT;
+                id_ex_candidate.exception.value = 32'b0;
+            end
+            else if (decode_ctrl.illegal_instruction) begin
+                id_ex_candidate.exception.valid = 1'b1;
+                id_ex_candidate.exception.cause =
+                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
+                id_ex_candidate.exception.value = if_id_q.instruction;
+            end
         end
 
         if (id_ex_candidate.exception.valid) begin

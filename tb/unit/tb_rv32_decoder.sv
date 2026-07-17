@@ -40,6 +40,9 @@ module tb_rv32_decoder;
         test_store(FUNCT3_SH, MEM_SIZE_HALF, "SH");
         test_store(FUNCT3_SW, MEM_SIZE_WORD, "SW");
 
+        test_fence();
+        test_system_exceptions();
+
         test_op_imm(FUNCT3_ADD_SUB, FUNCT7_BASE,    ALU_ADD,  "ADDI");
         test_op_imm(FUNCT3_SLL,     FUNCT7_BASE,    ALU_SLL,  "SLLI");
         test_op_imm(FUNCT3_SLT,     FUNCT7_BASE,    ALU_SLT,  "SLTI");
@@ -73,6 +76,8 @@ module tb_rv32_decoder;
                      "illegal shift-immediate funct7");
         test_illegal(OPCODE_OP,     FUNCT3_ADD_SUB, 7'b000_0001,
                      "illegal RV32M encoding");
+        test_illegal(OPCODE_MISC_MEM, 3'b001, FUNCT7_BASE,
+                     "FENCE.I is illegal without Zifencei");
         test_illegal(7'b111_1111,   3'b000,        FUNCT7_BASE,
                      "illegal opcode");
 
@@ -117,6 +122,84 @@ module tb_rv32_decoder;
             expected_ctrl.wb_ctrl.writeback_select = WB_PC_PLUS_4;
             check_decode(make_instruction(OPCODE_JAL, 3'b000, FUNCT7_BASE),
                          expected_ctrl, "JAL");
+        end
+    endtask
+
+    task automatic test_fence;
+        logic [31:0] fence_instruction;
+
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+            check_decode(
+                32'h0ff0_000f,
+                expected_ctrl,
+                "FENCE RWIO,RWIO"
+            );
+            check_decode(
+                32'h8330_000f,
+                expected_ctrl,
+                "FENCE.TSO is conservatively treated as FENCE"
+            );
+
+            fence_instruction = '0;
+            fence_instruction[31:20] = 12'habc;
+            fence_instruction[19:15] = 5'h1f;
+            fence_instruction[14:12] = FUNCT3_FENCE;
+            fence_instruction[11:7]  = 5'h1f;
+            fence_instruction[6:0]   = OPCODE_MISC_MEM;
+            check_decode(
+                fence_instruction,
+                expected_ctrl,
+                "FENCE ignores reserved fm/pred/succ/rs1/rd fields"
+            );
+        end
+    endtask
+
+    task automatic test_system_exceptions;
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.environment_call = 1'b1;
+            check_decode(
+                INSTRUCTION_ECALL,
+                expected_ctrl,
+                "ECALL exception source"
+            );
+
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.breakpoint = 1'b1;
+            check_decode(
+                INSTRUCTION_EBREAK,
+                expected_ctrl,
+                "EBREAK exception source"
+            );
+
+            set_expected_defaults();
+            check_decode(
+                INSTRUCTION_ECALL | 32'h0000_0080,
+                expected_ctrl,
+                "ECALL with nonzero rd is illegal"
+            );
+            check_decode(
+                INSTRUCTION_ECALL | 32'h0000_8000,
+                expected_ctrl,
+                "ECALL with nonzero rs1 is illegal"
+            );
+            check_decode(
+                32'h3020_0073,
+                expected_ctrl,
+                "MRET remains illegal before Machine Mode"
+            );
+            check_decode(
+                32'h3000_1073,
+                expected_ctrl,
+                "CSR instruction remains illegal before Zicsr"
+            );
         end
     endtask
 

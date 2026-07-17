@@ -46,6 +46,7 @@ rv32_pkg.sv
 - 实例化并连接所有子模块；
 - 保存 IF/ID、ID/EX、EX/MEM、MEM/WB；
 - 对四组流水寄存器执行统一动作；
+- EX 被 HOLD 时保存完整 EX/MEM 候选快照，防止前递来源离开后地址、数据、控制或异常资格重新计算；
 - 组织 WB 写回选择和退休跟踪输出；
 - 保证顶层数据流和控制流可以在一个文件中完整追踪。
 
@@ -63,6 +64,7 @@ rv32_pkg.sv
 - 组织指令译码、立即数生成和通用寄存器读取；
 - 接收 WB 写回端口；
 - 完成 WB→ID 显式旁路；
+- 将 `FENCE` 译码为无源寄存器、无写回、无访存控制的合法流水指令；
 - 输出 ID/EX 所需的数据和语义控制；
 - 不拥有流水寄存器。
 
@@ -75,6 +77,7 @@ rv32_pkg.sv
 - 执行算术、逻辑、移位和比较；
 - 完成 branch 条件判断和 redirect 目标计算；
 - 计算 load/store 地址和 store 写数据；
+- 在 EX 检测 taken 控制转移目标及 load/store 有效地址未对齐，生成异常元数据并关闭该指令的写回/访存副作用；
 - 为未来乘除法和协处理器结果预留接入位置。
 
 ### 3.5 `rv32_lsu`
@@ -228,12 +231,14 @@ decode_ctrl_t:
     uses_rs2
     immediate_type
     illegal_instruction
+    environment_call
+    breakpoint
     ex_ctrl
     mem_ctrl
     wb_ctrl
 ```
 
-`immediate_type` 只用于 ID 生成立即数。进入 ID/EX 的是已经扩展完成的 `immediate`，不再携带立即数类型。
+`immediate_type` 只用于 ID 生成立即数。进入 ID/EX 的是已经扩展完成的 `immediate`，不再携带立即数类型。`environment_call` 和 `breakpoint` 也只在 ID 将合法的 `ECALL/EBREAK` 转换为异常元数据，不随普通控制字段继续传播。
 
 ### 7.3 异常数据包
 
@@ -442,7 +447,7 @@ wb_bus
 id_ex_candidate
 ```
 
-IDU 内部完成译码、立即数生成、寄存器读取和 WB→ID 旁路。候选数据同时向 forward unit 提供当前 ID 指令的源寄存器语义。
+IDU 内部完成译码、立即数生成、寄存器读取和 WB→ID 旁路。候选数据同时向 forward unit 提供当前 ID 指令的源寄存器语义。`FENCE` 不需要新增控制字段：decoder 清除 `illegal_instruction`，保持所有副作用控制为 0，并选择确定的 `zero + zero` 内部执行结果，避免被忽略的编码字段引入 X 传播；现有 valid 流水自然把它送到 WB 退休。
 
 ### 9.3 Forward unit
 
