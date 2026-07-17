@@ -1,0 +1,38 @@
+name: RTL regression
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rtl-regression-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  v0_1_regression:
+    name: v0.1 Icarus and Verilator regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install open-source simulators
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes iverilog verilator
+
+      - name: Show tool versions
+        run: |
+          iverilog -V 2>&1 | head -n 1
+          verilator --version
+
+      - name: Run frozen v0.1 regression
+        run: scripts/run_v0_1_regression.sh
