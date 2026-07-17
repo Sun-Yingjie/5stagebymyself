@@ -67,6 +67,18 @@ Verilator core: 7/7 scenarios passed
 BUILD_ROOT=/path/to/build scripts/run_v0_1_regression.sh
 ```
 
+## 持续集成
+
+GitHub Actions 在以下事件运行同一套 v0.1 回归：
+
+- Pull Request；
+- 推送到 `main`；
+- 在 Actions 页面手动触发。
+
+工作流入口是 `.github/workflows/rtl-regression.yml`。它在 Ubuntu runner 上安装
+Icarus Verilog 和 Verilator，然后直接调用 `scripts/run_v0_1_regression.sh`。
+本地与 CI 复用同一脚本，避免两套回归入口随项目演进而产生差异。
+
 ## 目录
 
 ```text
