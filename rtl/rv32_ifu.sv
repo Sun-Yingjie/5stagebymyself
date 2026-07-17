@@ -20,36 +20,36 @@ module rv32_ifu #(
     output rv32_pkg::if_id_t        if_id_candidate,
     output logic                    fetch_response_available
 );
-
+// _q可以认为是上周期的结果，_d是这周期的结果，_d会在时钟边沿赋值给_q
     import rv32_pkg::*;
 
-    logic [31:0] next_fetch_addr_q;
+    logic [31:0] next_fetch_addr_q; // 保存“滞外”取指事件的PC+4
     logic [31:0] next_fetch_addr_d;
 
-    logic        request_pending_q;
+    logic        request_pending_q; // IFU的状态：IFU中有等待imem接收的取指请求
     logic        request_pending_d;
     logic [31:0] request_pending_addr_q;
     logic [31:0] request_pending_addr_d;
-    logic        request_pending_stale_q;
+    logic        request_pending_stale_q; // IFU的状态：IFU中等待中的取指请求是无效的
     logic        request_pending_stale_d;
 
-    logic        outstanding_q;
+    logic        outstanding_q; // IFU的状态：滞外取指请求，response_fire=0
     logic        outstanding_d;
     logic [31:0] request_pc_q;
     logic [31:0] request_pc_d;
-    logic        outstanding_stale_q;
+    logic        outstanding_stale_q; // IFU的状态：滞外取指请求是无效的
     logic        outstanding_stale_d;
 
-    logic        redirect_pending_q;
+    logic        redirect_pending_q; // IFU的状态：有等待中的重定向，因上次IFU取值请求未完成使得重定向处于等待状态
     logic        redirect_pending_d;
     logic [31:0] redirect_target_q;
     logic [31:0] redirect_target_d;
 
-    logic        request_fire;
-    logic        response_fire;
-    logic        redirect_now;
-    logic        request_slot_available;
-    logic        request_uses_redirect;
+    logic        request_fire; // 取值请求成功发出并且被IMEM接收
+    logic        response_fire; // 取值结果成功发出并且被IFU接收
+    logic        redirect_now; // 当周期收到重定向
+    logic        request_slot_available; // 是否能向IMEM发出取指请求
+    logic        request_uses_redirect; // 是否能发出重定向的取指请求：是否能发出新的请求，是否是重定向请求
 
     assign request_fire  = imem_req_valid && imem_req_ready;
     assign response_fire = imem_rsp_valid && imem_rsp_ready;
@@ -64,7 +64,8 @@ module rv32_ifu #(
         request_slot_available &&
         (redirect_now || redirect_pending_q);
 
-    assign fetch_response_available = // imem返回了一条正确路径的有效取值结果：不在复位状态，且，之前有已发出但未返回的取值请求，且，该已发出但未返回的取值请求没有被废弃，且，imem发出了握手请求
+    assign fetch_response_available = // imem返回了一条正确路径的有效取值结果：不在复位状态，且，之前有已发出但未返回的取值请求，且，该已发出但未返回的取值请求没有被废弃，且，imem发出了握手请求；如果流水级没有出现重刷、访存wait、执行wait、load use hazard的话，PC就能顺利PC+4；
+    //! fetch_response_available是ifu模块的关键信号，代表ifu是否从imem收到了有效的取指结果（指令）
         !rst &&
         outstanding_q &&
         !outstanding_stale_q &&
@@ -189,9 +190,9 @@ module rv32_ifu #(
         end
     end
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge clk) begin // 状态
         if (rst) begin
-            next_fetch_addr_q       <= RESET_VECTOR;
+            next_fetch_addr_q       <= RESET_VECTOR; 
 
             request_pending_q       <= 1'b1;
             request_pending_addr_q  <= RESET_VECTOR;
