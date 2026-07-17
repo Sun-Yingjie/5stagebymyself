@@ -16,8 +16,9 @@
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Zicsr 流水契约、无状态 CSR 运算/语义译码叶子、独立 CSR/trap 状态所有者、LSU 内部请求阻断与被动结果/异常通道，以及尚不可达的被动流水字段与 late-result 控制路径；
-- Icarus 14/14 叶子 TB、Icarus/Verilator core 7/7 场景通过；
+- MEM 统一同步异常提交、精确 trap、`mtvec` 重定向与独立 trap 跟踪接口；
+- Zicsr 流水契约、无状态 CSR 运算/语义译码叶子、已接入 core 的 CSR/trap 状态所有者，以及尚不可达的被动流水字段与 late-result 控制路径；
+- Icarus 14/14 叶子 TB、Icarus/Verilator core 11/11 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
 `HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前开发状态以本 README 为准；[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)保留的是 v0.1 基线证据，不随之后新增的叶子模块测试计数改写。
@@ -57,7 +58,7 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-[PASS] rv32_core: 7/7 scenarios, 99 retirements, 18 DMem requests, 1733 checks
+[PASS] rv32_core: 11/11 scenarios, 106 retirements, 4 traps, 19 DMem requests, 2630 checks
 [PASS] v0.1 regression completed: 14/14 unit TBs and core TB passed
 ```
 
@@ -97,9 +98,9 @@ waves/          阶段性波形落点
 ## 已知边界
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
-- `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- Zicsr 已完成架构契约、无状态 CSR 运算/语义译码叶子、被动流水字段、通用 late-result 冒险控制、独立 CSR/trap 状态所有者，以及 LSU 内部请求阻断和被动结果/异常通道；owner 尚未接入 core，阻断输入当前固定为 0，主 decoder 仍保持 CSR illegal，因此 CSR 指令仍不可执行；
-- 未实现 Machine Mode、interrupt 和 RV32M；
+- `ECALL/EBREAK`、非法指令、取指/数据访问错误和地址异常已进入 MEM 统一精确 trap 路径；当前 core directed test 覆盖 illegal、`ECALL` 和 load access fault，其余 cause 的端到端矩阵仍待补齐；
+- Zicsr 已完成架构契约、无状态语义叶子、被动流水字段、通用 late-result 冒险控制和 CSR/trap 状态所有者接入；主 decoder 仍保持 CSR illegal，因此六条 CSR 指令尚不可执行；
+- 未实现完整 Machine Mode、`MRET`、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；
 - 未运行完整 ACT4、参考模型差分、VCS、DC、Formality 和 PrimeTime；
@@ -110,8 +111,7 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-Zicsr 语义叶子与指令数据通路
-    → machine-mode-only 精确 trap 闭环
+激活六条 Zicsr 指令并完成 CSR 端到端测试
     → 迭代式 RV32M
     → 精确 Machine interrupt
     → ACT4 + 参考模型差分

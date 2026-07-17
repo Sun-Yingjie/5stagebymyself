@@ -4,6 +4,8 @@ rtl/rv32_regfile.sv
 rtl/rv32_imm_gen.sv
 rtl/rv32_decoder.sv
 rtl/rv32_alu.sv
+rtl/rv32_csr_alu.sv
+rtl/rv32_csr_trap.sv
 rtl/rv32_branch_compare.sv
 rtl/rv32_forward_unit.sv
 rtl/rv32_pipeline_ctrl.sv

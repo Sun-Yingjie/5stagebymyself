@@ -1,7 +1,7 @@
 # 模块划分与顶层集成架构
 
 > 上位规格：`00_processor_architecture.md`、`01_core_system_context.md`、`02_pipeline_contract.md`  
-> 当前阶段：v0.1 模块边界已冻结；v0.2 按本契约增量实现 Zicsr/Machine Mode，尚未接入 core。
+> 当前阶段：v0.1 模块边界已冻结；v0.2 同步 trap/CSR owner 已接入 core，Zicsr 指令尚未激活。
 
 ## 1. 模块划分原则
 
@@ -19,7 +19,7 @@ rv32_core
 ├── rv32_ifu
 ├── rv32_idu
 │   ├── rv32_decoder
-│   ├── rv32_csr_decoder  Zicsr 先独立验证，完整路径接入时实例化
+│   ├── rv32_csr_decoder  已独立验证，下一增量接入 IDU
 │   ├── rv32_imm_gen
 │   └── rv32_regfile
 ├── rv32_exu
@@ -28,7 +28,7 @@ rv32_core
 ├── rv32_lsu
 ├── rv32_forward_unit
 ├── rv32_pipeline_ctrl
-└── rv32_csr_trap         已独立实现和验证，待 core 接入
+└── rv32_csr_trap         已独立验证并接入 core
     └── rv32_csr_alu      已实现并由状态所有者实例化
 ```
 
@@ -70,7 +70,7 @@ rv32_pkg.sv
 - 输出 ID/EX 所需的数据和语义控制；
 - 不拥有流水寄存器。
 
-`rv32_decoder`、`rv32_csr_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。当前 `rv32_csr_decoder` 先单独编译和测试，尚未由 IDU 实例化；在 CSR 流水承载和写回路径接通前，主 `rv32_decoder` 继续把 CSR 编码报告为 illegal instruction，防止指令过早合法化后以错误结果退休。
+`rv32_decoder`、`rv32_csr_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。当前 `rv32_csr_decoder` 已单独编译和测试，但尚未由 IDU 实例化；CSR 流水承载、写回和 trap owner 路径已经接通，主 `rv32_decoder` 仍故意把 CSR 编码报告为 illegal instruction，把六条 Zicsr 指令的合法化及端到端验证保留为下一独立增量。
 
 #### 3.3.1 `rv32_csr_decoder`
 
@@ -133,7 +133,7 @@ v0.2 加入，拥有 `mstatus`、`misa`、`mtvec`、`mscratch`、`mepc`、`mcaus
 - 指向 trap handler 的 `trap_redirect`；
 - `trap_valid/pc/cause/value` 跟踪事件。
 
-该模块不检测指令编码或外部总线错误，也不直接清除流水寄存器；但它是 CSR 地址存在性、权限和只读属性的唯一检查者，并在内部实例化 `rv32_csr_alu` 生成候选写值。流水动作仍由 `rv32_pipeline_ctrl` 统一选择。当前模块已作为独立叶子实现和单测，但尚未在 core 中实例化；后续按第 9.7 节接口接入，`mret` 再作为 Machine Mode 增量扩展。
+该模块不检测指令编码或外部总线错误，也不直接清除流水寄存器；但它是 CSR 地址存在性、权限和只读属性的唯一检查者，并在内部实例化 `rv32_csr_alu` 生成候选写值。流水动作仍由 `rv32_pipeline_ctrl` 统一选择。当前模块已完成独立单测并接入 core；`mret` 再作为后续 Machine Mode 增量扩展。
 
 ### 3.9 `rv32_csr_alu`
 
@@ -565,7 +565,7 @@ load_result
 lsu_exception
 ```
 
-`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。`ex_request_block` 必须在 LSU 内部参与 `dmem_req_valid` 和 `request_fire` 的资格判断；不得只在 core 的 LSU 输出端与掉 `dmem_req_valid`，否则外部握手与 `outstanding` 状态会分裂。当前 core 固定输入为 0 以保持 v0.1 行为，接入最终 MEM 异常路径时再由更老异常资格驱动。LSU 已并行导出纯 `load_result` 和只包含数据访问错误的 `lsu_exception`；过渡期仍保留旧 `mem_wb_candidate/mem_exception` 输出供 core 使用，下一原子集成增量再由 core 统一组装结果与合并最终异常。
+`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。`ex_request_block` 必须在 LSU 内部参与 `dmem_req_valid` 和 `request_fire` 的资格判断；不得只在 core 的 LSU 输出端与掉 `dmem_req_valid`，否则外部握手与 `outstanding` 状态会分裂。当前 core 使用 `ex_mem_q.valid && final_mem_exception.valid` 驱动该输入。LSU 导出纯 `load_result` 和只包含数据访问错误的 `lsu_exception`，core 已据此统一组装 `mem_wb_candidate` 并合并最终异常；旧 `mem_wb_candidate/mem_exception` 兼容输出暂时只供 LSU 单测做等价检查，后续清理。
 
 ### 9.6 Pipeline control
 
@@ -674,6 +674,7 @@ actions + candidates
 ```systemverilog
 module rv32_core #(
     parameter logic [31:0] RESET_VECTOR  = 32'h0000_0000,
+    parameter logic [31:0] MTVEC_RESET   = 32'h0000_0000,
     parameter bit          COPROC_ENABLE = 1'b0
 ) (
     input  logic        clk,
@@ -705,6 +706,11 @@ module rv32_core #(
     output logic [4:0]  retire_rd_addr,
     output logic [31:0] retire_rd_data,
 
+    output logic        trap_valid,
+    output logic [31:0] trap_pc,
+    output logic [31:0] trap_cause,
+    output logic [31:0] trap_value,
+
     output logic        cp_req_valid,
     input  logic        cp_req_ready,
     output logic [31:0] cp_req_pc,
@@ -718,16 +724,7 @@ module rv32_core #(
 );
 ```
 
-上述代码块是当前 v0.1 RTL 的精确端口。v0.2 同步异常闭环在保持现有端口不变的基础上增加：
-
-```systemverilog
-    output logic        trap_valid,
-    output logic [31:0] trap_pc,
-    output logic [31:0] trap_cause,
-    output logic [31:0] trap_value
-```
-
-这些端口是提交级跟踪接口，不是外部中断输入，也不承担 CSR 软件访问功能。
+上述代码块是当前 RTL 的精确端口。`MTVEC_RESET` 提供 Direct 模式初始 trap base，内部按 4 字节对齐；四个 trap 输出是提交级跟踪接口，不是外部中断输入，也不承担 CSR 软件访问功能。
 
 ### 10.1 顶层约束
 

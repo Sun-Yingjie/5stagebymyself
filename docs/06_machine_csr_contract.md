@@ -1,6 +1,6 @@
 # v0.2 Machine CSR Profile 与状态所有者契约
 
-> 状态：冻结契约；`rv32_csr_trap` 已独立实现和单测，尚未接入 core。<br>
+> 状态：冻结契约；`rv32_csr_trap` 已完成独立单测并接入 core，Zicsr 主译码尚未激活。<br>
 > 适用范围：RV32、`IALIGN=32`、单 hart、仅 M-mode。<br>
 > 规范基线：[Zicsr 2.0](https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html)、[Privileged Architecture 1.13 Machine-Level ISA](https://docs.riscv.org/reference/isa/v20260120/priv/machine.html) 和 [CSR address map](https://docs.riscv.org/reference/isa/v20260120/priv/priv-csrs.html)。
 
@@ -162,7 +162,7 @@ trap_take = !rst
 
 ## 8. Owner 接口与集成边界
 
-`rv32_csr_trap` 当前作为未接 core 的独立模块实现并完成单测。接口沿用
+`rv32_csr_trap` 已按下列接口接入 core。接口沿用
 `docs/03_module_architecture.md` 第 9.7 节：
 
 ```text
@@ -179,11 +179,11 @@ trap_take、trap_redirect
 trap_valid、trap_pc、trap_cause、trap_value
 ```
 
-正式接入 core 前必须先解决两项集成问题：
+当前 core 集成已满足两项约束：
 
 1. core 统一按“早期异常 > CSR illegal > LSU access fault”形成
    `final_mem_exception`；
-2. LSU 已提供内部 `ex_request_block` 资格输入；接入时必须由
+2. LSU 内部 `ex_request_block` 资格输入已由
    `ex_mem_q.valid && final_mem_exception.valid` 驱动，
    禁止更老 CSR illegal 同周期的年轻 EX load/store 握手。不得在 LSU 输出端
    另行与掉 `dmem_req_valid`，否则内部 `request_fire/outstanding` 状态会与外部
@@ -203,4 +203,4 @@ trap_valid、trap_pc、trap_cause、trap_value
 - trap 与显式 CSR 写同周期时 trap 胜出；
 - reset、trap 和普通写各自只产生一次可观察状态变化。
 
-只有上述单元测试、完整旧回归和 lint 通过后，才进入 core 集成和主 decoder 激活。
+上述单元测试、完整旧回归和 lint 已通过，owner 已进入 core 集成；主 decoder 激活仍作为下一独立增量，并须补齐六条 Zicsr 指令的 core 级端到端验证。

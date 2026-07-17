@@ -5,6 +5,7 @@ module tb_rv32_core;
     import rv32_tb_pkg::*;
 
     localparam logic [31:0] RESET_VECTOR = 32'h0000_0000;
+    localparam logic [31:0] TRAP_VECTOR  = 32'h0000_0300;
     localparam int unsigned IMEM_WORD_COUNT = 256;
     localparam int unsigned DMEM_BYTE_COUNT = 1024;
     localparam int unsigned MAX_EXPECTED = 128;
@@ -44,6 +45,11 @@ module tb_rv32_core;
     logic [4:0]  retire_rd_addr;
     logic [31:0] retire_rd_data;
 
+    logic        trap_valid;
+    logic [31:0] trap_pc;
+    logic [31:0] trap_cause;
+    logic [31:0] trap_value;
+
     logic        cp_req_valid;
     logic        cp_req_ready;
     logic [31:0] cp_req_pc;
@@ -67,10 +73,16 @@ module tb_rv32_core;
     logic [31:0] expected_dmem_wdata [0:MAX_EXPECTED-1];
     logic [3:0]  expected_dmem_wstrb [0:MAX_EXPECTED-1];
 
+    logic [31:0] expected_trap_pc [0:MAX_EXPECTED-1];
+    logic [31:0] expected_trap_cause [0:MAX_EXPECTED-1];
+    logic [31:0] expected_trap_value [0:MAX_EXPECTED-1];
+
     int unsigned expected_retire_count;
     int unsigned observed_retire_count;
     int unsigned expected_dmem_request_count;
     int unsigned observed_dmem_request_count;
+    int unsigned expected_trap_count;
+    int unsigned observed_trap_count;
 
     int unsigned expected_load_use_count;
     int unsigned expected_redirect_count;
@@ -93,6 +105,11 @@ module tb_rv32_core;
     int unsigned total_error_count;
     int unsigned total_retire_count;
     int unsigned total_dmem_request_count;
+    int unsigned total_trap_count;
+
+    logic trap_with_retire_seen;
+    logic trap_with_raw_redirect_seen;
+    logic trap_blocked_younger_store_seen;
 
     logic [31:0] program_pc;
     logic        scenario_active;
@@ -139,6 +156,7 @@ module tb_rv32_core;
 
     rv32_core #(
         .RESET_VECTOR  (RESET_VECTOR),
+        .MTVEC_RESET   (TRAP_VECTOR),
         .COPROC_ENABLE (1'b0)
     ) dut (
         .clk             (clk),
@@ -166,6 +184,10 @@ module tb_rv32_core;
         .retire_rd_we    (retire_rd_we),
         .retire_rd_addr  (retire_rd_addr),
         .retire_rd_data  (retire_rd_data),
+        .trap_valid      (trap_valid),
+        .trap_pc         (trap_pc),
+        .trap_cause      (trap_cause),
+        .trap_value      (trap_value),
         .cp_req_valid    (cp_req_valid),
         .cp_req_ready    (cp_req_ready),
         .cp_req_pc       (cp_req_pc),
@@ -355,6 +377,23 @@ module tb_rv32_core;
         end
     endtask
 
+    task automatic expect_trap(
+        input logic [31:0] pc,
+        input logic [31:0] cause,
+        input logic [31:0] value
+    );
+        begin
+            if (expected_trap_count >= MAX_EXPECTED) begin
+                $fatal(1, "trap expectation capacity exceeded");
+            end
+
+            expected_trap_pc[expected_trap_count]    = pc;
+            expected_trap_cause[expected_trap_count] = cause;
+            expected_trap_value[expected_trap_count] = value;
+            expected_trap_count++;
+        end
+    endtask
+
     task automatic emit_writeback_instruction(
         input logic [31:0] instruction,
         input logic [4:0]  rd_addr,
@@ -398,6 +437,29 @@ module tb_rv32_core;
         end
     endtask
 
+    task automatic install_trap_handler(
+        input logic [4:0]  rd_addr,
+        input logic [31:0] rd_data
+    );
+        logic [31:0] instruction;
+        begin
+            instruction = instruction_op_imm(
+                FUNCT3_ADD_SUB,
+                rd_addr,
+                5'd0,
+                rd_data
+            );
+            u_imem.write_word(TRAP_VECTOR, instruction);
+            expect_retirement(
+                TRAP_VECTOR,
+                instruction,
+                1'b1,
+                rd_addr,
+                rd_data
+            );
+        end
+    endtask
+
     task automatic begin_scenario(
         input string name
     );
@@ -418,6 +480,8 @@ module tb_rv32_core;
             observed_retire_count       = 0;
             expected_dmem_request_count = 0;
             observed_dmem_request_count = 0;
+            expected_trap_count         = 0;
+            observed_trap_count         = 0;
 
             expected_load_use_count          = 0;
             expected_redirect_count          = 0;
@@ -430,6 +494,10 @@ module tb_rv32_core;
             ex_request_wait_count   = 0;
             mem_response_wait_count = 0;
             imem_request_stall_count = 0;
+
+            trap_with_retire_seen        = 1'b0;
+            trap_with_raw_redirect_seen  = 1'b0;
+            trap_blocked_younger_store_seen = 1'b0;
 
             scenario_cycle_count = 0;
             scenario_check_count = 0;
@@ -456,7 +524,10 @@ module tb_rv32_core;
     task automatic wait_for_completion;
         begin
             while (
-                (observed_retire_count < expected_retire_count) &&
+                (
+                    (observed_retire_count < expected_retire_count) ||
+                    (observed_trap_count < expected_trap_count)
+                ) &&
                 (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
             ) begin
                 @(posedge clk);
@@ -466,9 +537,11 @@ module tb_rv32_core;
             check_condition(
                 scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES,
                 $sformatf(
-                    "timeout: observed %0d/%0d retirements",
+                    "timeout: retire %0d/%0d trap %0d/%0d",
                     observed_retire_count,
-                    expected_retire_count
+                    expected_retire_count,
+                    observed_trap_count,
+                    expected_trap_count
                 )
             );
         end
@@ -491,6 +564,14 @@ module tb_rv32_core;
                     "DMem request count %0d, expected %0d",
                     observed_dmem_request_count,
                     expected_dmem_request_count
+                )
+            );
+            check_condition(
+                observed_trap_count == expected_trap_count,
+                $sformatf(
+                    "trap count %0d, expected %0d",
+                    observed_trap_count,
+                    expected_trap_count
                 )
             );
             check_condition(
@@ -538,10 +619,11 @@ module tb_rv32_core;
             if (scenario_error_count == 0) begin
                 passed_scenario_count++;
                 $display(
-                    "[PASS] %-28s cycles=%0d retire=%0d dmem=%0d checks=%0d",
+                    "[PASS] %-28s cycles=%0d retire=%0d trap=%0d dmem=%0d checks=%0d",
                     scenario_name,
                     scenario_cycle_count,
                     observed_retire_count,
+                    observed_trap_count,
                     observed_dmem_request_count,
                     scenario_check_count
                 );
@@ -1344,10 +1426,17 @@ module tb_rv32_core;
             minimum_mem_response_wait_count = 3;
 
             release_reset();
-            while (observed_dmem_request_count < 1) begin
+            while (
+                (observed_dmem_request_count < 1) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
                 @(posedge clk);
                 #1;
             end
+            check_condition(
+                observed_dmem_request_count == 1,
+                "blocking load request was not observed before timeout"
+            );
 
             repeat (3) begin
                 @(posedge clk);
@@ -1368,6 +1457,221 @@ module tb_rv32_core;
                 u_dmem.read_word(32'h180) == 32'h0000_0000,
                 "store on the branch wrong path modified memory"
             );
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_precise_illegal_trap;
+        logic [31:0] illegal_instruction;
+        logic [31:0] younger_store;
+        begin
+            begin_scenario("precise_illegal_trap");
+
+            illegal_instruction = 32'hffff_ffff;
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd1,
+                32'h0000_0100
+            );
+
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'd1),
+                5'd1,
+                32'd1
+            );
+
+            u_imem.write_word(program_pc, illegal_instruction);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION,
+                illegal_instruction
+            );
+            program_pc = program_pc + 32'd4;
+
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd2, 32'd2);
+
+            release_reset();
+            wait_for_completion();
+
+            check_condition(
+                trap_with_retire_seen,
+                "older WB instruction did not retire beside MEM trap"
+            );
+            check_condition(
+                trap_blocked_younger_store_seen,
+                "illegal trap did not encounter and block younger store"
+            );
+            check_condition(
+                u_dmem.read_word(32'h0000_0100) == 32'b0,
+                "younger store modified memory before trap flush"
+            );
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "blocked younger store left a phantom LSU transaction"
+            );
+
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_trap_beats_redirect;
+        logic [31:0] illegal_instruction;
+        begin
+            begin_scenario("trap_beats_redirect");
+
+            illegal_instruction = 32'h0000_0000;
+
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'd1),
+                5'd1,
+                32'd1
+            );
+
+            u_imem.write_word(program_pc, illegal_instruction);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION,
+                illegal_instruction
+            );
+            program_pc = program_pc + 32'd4;
+
+            emit_squashed_instruction(
+                encoder_b(FUNCT3_BEQ, 5'd0, 5'd0, 32'd8)
+            );
+            install_trap_handler(5'd3, 32'd3);
+
+            release_reset();
+            wait_for_completion();
+
+            check_condition(
+                trap_with_raw_redirect_seen,
+                "MEM trap was not observed beside younger taken branch"
+            );
+            check_condition(
+                redirect_count == 0,
+                "younger branch redirect committed beside MEM trap"
+            );
+
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_dmem_fault_trap_wait;
+        logic [31:0] faulting_load;
+        begin
+            begin_scenario("dmem_fault_trap_wait");
+            dmem_response_enable = 1'b0;
+
+            emit_writeback_instruction(
+                encoder_u(OPCODE_LUI, 5'd1, 32'h0000_1000),
+                5'd1,
+                32'h0000_1000
+            );
+
+            faulting_load = instruction_load(
+                FUNCT3_LW,
+                5'd2,
+                5'd1,
+                32'b0
+            );
+            u_imem.write_word(program_pc, faulting_load);
+            expect_dmem_request(1'b0, 32'h0000_1000, '0, '0);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_LOAD_ACCESS_FAULT,
+                32'h0000_1000
+            );
+            program_pc = program_pc + 32'd4;
+
+            emit_squashed_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd31, 5'd0, 32'd31)
+            );
+            install_trap_handler(5'd4, 32'd4);
+
+            minimum_mem_response_wait_count = 3;
+
+            release_reset();
+            while (
+                (observed_dmem_request_count < 1) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
+            check_condition(
+                observed_dmem_request_count == 1,
+                "faulting load request was not observed before timeout"
+            );
+
+            repeat (3) begin
+                @(posedge clk);
+                #1;
+                check_condition(
+                    dut.mem_response_wait &&
+                    !trap_valid &&
+                    (observed_trap_count == 0),
+                    "load fault trapped before its response completed"
+                );
+            end
+
+            @(negedge clk);
+            dmem_response_enable = 1'b1;
+
+            wait_for_completion();
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "faulting load transaction did not drain after trap"
+            );
+
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_trap_redirect_backpressure;
+        begin
+            begin_scenario("trap_redirect_backpressure");
+
+            u_imem.write_word(program_pc, INSTRUCTION_ECALL);
+            expect_trap(
+                program_pc,
+                EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE,
+                32'b0
+            );
+            program_pc = program_pc + 32'd4;
+            install_trap_handler(5'd5, 32'd5);
+
+            minimum_imem_request_stall_count = 3;
+
+            release_reset();
+            while (
+                (trap_valid !== 1'b1) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(negedge clk);
+            end
+            check_condition(
+                trap_valid === 1'b1,
+                "ECALL trap was not observed before timeout"
+            );
+            imem_request_enable = 1'b0;
+
+            repeat (3) begin
+                @(posedge clk);
+                #1;
+                check_condition(
+                    imem_req_valid &&
+                    !imem_req_ready &&
+                    (imem_req_addr == TRAP_VECTOR),
+                    "backpressured trap target request was not held stable"
+                );
+            end
+
+            @(negedge clk);
+            imem_request_enable = 1'b1;
+
+            wait_for_completion();
             end_scenario();
         end
     endtask
@@ -1416,8 +1720,9 @@ module tb_rv32_core;
                     !imem_rsp_ready &&
                     !dmem_req_valid &&
                     !dmem_rsp_ready &&
-                    !retire_valid,
-                    "reset did not suppress requests, responses, and retirement"
+                    !retire_valid &&
+                    !trap_valid,
+                    "reset did not suppress requests, responses, retirement, and trap"
                 );
             end
 
@@ -1478,9 +1783,27 @@ module tb_rv32_core;
             );
             check_condition(
                 dut.qualified_redirect.valid ===
-                    (dut.redirect_commit && dut.raw_redirect.valid),
+                    (
+                        dut.trap_take ||
+                        (dut.redirect_commit && dut.raw_redirect.valid)
+                    ),
                 "qualified redirect did not match commit qualification"
             );
+            check_condition(
+                !(dut.trap_take && dut.redirect_commit),
+                "trap and younger EX redirect committed in the same cycle"
+            );
+            if (dut.trap_take) begin
+                check_condition(
+                    dut.qualified_redirect === dut.trap_redirect,
+                    "trap redirect did not win final redirect mux"
+                );
+            end else if (dut.redirect_commit) begin
+                check_condition(
+                    dut.qualified_redirect === dut.raw_redirect,
+                    "EX redirect did not reach final redirect mux"
+                );
+            end
 
             if (imem_req_valid) begin
                 check_condition(
@@ -1509,6 +1832,19 @@ module tb_rv32_core;
                         retire_rd_data
                     }) !== 1'bx,
                     "retirement fields contain X/Z"
+                );
+            end
+            if (trap_valid) begin
+                check_condition(
+                    (^{trap_pc, trap_cause, trap_value}) !== 1'bx,
+                    "trap fields contain X/Z"
+                );
+            end else begin
+                check_condition(
+                    (trap_pc == 32'b0) &&
+                    (trap_cause == 32'b0) &&
+                    (trap_value == 32'b0),
+                    "inactive trap trace payload is not zero"
                 );
             end
 
@@ -1596,8 +1932,21 @@ module tb_rv32_core;
                 end
             end
 
-            if (dut.mem_response_wait) begin
+            if (dut.trap_take) begin
+                check_condition(
+                    (dut.fetch_action == FETCH_REDIRECT) &&
+                    (dut.if_id_action == PIPE_CLEAR) &&
+                    (dut.id_ex_action == PIPE_CLEAR) &&
+                    (dut.ex_mem_action == PIPE_CLEAR) &&
+                    (dut.mem_wb_action == PIPE_CLEAR),
+                    "trap selected wrong pipeline actions"
+                );
+            end else if (dut.mem_response_wait) begin
                 mem_response_wait_count++;
+                check_condition(
+                    !trap_valid,
+                    "trap committed while MEM response was still pending"
+                );
                 check_condition(
                     (dut.fetch_action == FETCH_HOLD) &&
                     (dut.if_id_action == PIPE_HOLD) &&
@@ -1725,6 +2074,82 @@ module tb_rv32_core;
                 end
 
                 observed_retire_count++;
+            end
+
+            if (trap_valid) begin
+                total_trap_count++;
+
+                check_condition(
+                    dut.trap_take,
+                    "trap trace asserted without trap_take"
+                );
+                check_condition(
+                    !dut.mem_wb_candidate.valid,
+                    "faulting MEM instruction formed a retirement candidate"
+                );
+
+                if (retire_valid) begin
+                    trap_with_retire_seen = 1'b1;
+                end
+                if (dut.raw_redirect.valid) begin
+                    trap_with_raw_redirect_seen = 1'b1;
+                end
+                if (
+                    dut.ex_mem_active_candidate.valid &&
+                    dut.ex_mem_active_candidate.mem_ctrl.memory_write
+                ) begin
+                    check_condition(
+                        !dmem_req_valid &&
+                        !dut.u_lsu.request_fire &&
+                        dut.ex_request_block,
+                        "trap did not block younger store inside LSU"
+                    );
+                    trap_blocked_younger_store_seen = 1'b1;
+                end
+
+                if (observed_trap_count < expected_trap_count) begin
+                    check_condition(
+                        trap_pc === expected_trap_pc[observed_trap_count],
+                        $sformatf(
+                            "trap[%0d] PC=%08h expected=%08h",
+                            observed_trap_count,
+                            trap_pc,
+                            expected_trap_pc[observed_trap_count]
+                        )
+                    );
+                    check_condition(
+                        trap_cause ===
+                            expected_trap_cause[observed_trap_count],
+                        $sformatf(
+                            "trap[%0d] cause=%08h expected=%08h",
+                            observed_trap_count,
+                            trap_cause,
+                            expected_trap_cause[observed_trap_count]
+                        )
+                    );
+                    check_condition(
+                        trap_value ===
+                            expected_trap_value[observed_trap_count],
+                        $sformatf(
+                            "trap[%0d] value=%08h expected=%08h",
+                            observed_trap_count,
+                            trap_value,
+                            expected_trap_value[observed_trap_count]
+                        )
+                    );
+                end else begin
+                    check_condition(
+                        1'b0,
+                        $sformatf(
+                            "unexpected trap PC=%08h cause=%08h value=%08h",
+                            trap_pc,
+                            trap_cause,
+                            trap_value
+                        )
+                    );
+                end
+
+                observed_trap_count++;
             end
 
             if (dmem_request_fire) begin
@@ -1910,6 +2335,11 @@ module tb_rv32_core;
         total_error_count = 0;
         total_retire_count = 0;
         total_dmem_request_count = 0;
+        total_trap_count = 0;
+
+        trap_with_retire_seen = 1'b0;
+        trap_with_raw_redirect_seen = 1'b0;
+        trap_blocked_younger_store_seen = 1'b0;
 
         imem_outstanding_count = 0;
         dmem_outstanding_count = 0;
@@ -1924,16 +2354,21 @@ module tb_rv32_core;
         scenario_control_flow();
         scenario_protocol_backpressure();
         scenario_mem_wait_blocks_redirect();
+        scenario_precise_illegal_trap();
+        scenario_trap_beats_redirect();
+        scenario_dmem_fault_trap_wait();
+        scenario_trap_redirect_backpressure();
         scenario_reset_during_imem();
         scenario_reset_during_dmem();
 
         if (total_error_count == 0) begin
             $display("");
             $display(
-                "[PASS] rv32_core: %0d/%0d scenarios, %0d retirements, %0d DMem requests, %0d checks",
+                "[PASS] rv32_core: %0d/%0d scenarios, %0d retirements, %0d traps, %0d DMem requests, %0d checks",
                 passed_scenario_count,
                 scenario_count,
                 total_retire_count,
+                total_trap_count,
                 total_dmem_request_count,
                 total_check_count
             );

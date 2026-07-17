@@ -1,5 +1,6 @@
 module rv32_core #(
     parameter logic [31:0] RESET_VECTOR  = 32'h0000_0000,
+    parameter logic [31:0] MTVEC_RESET   = 32'h0000_0000,
     parameter bit          COPROC_ENABLE = 1'b0
 ) (
     input  logic        clk,
@@ -30,6 +31,11 @@ module rv32_core #(
     output logic        retire_rd_we,
     output logic [4:0]  retire_rd_addr,
     output logic [31:0] retire_rd_data,
+
+    output logic        trap_valid,
+    output logic [31:0] trap_pc,
+    output logic [31:0] trap_cause,
+    output logic [31:0] trap_value,
 
     output logic        cp_req_valid,
     input  logic        cp_req_ready,
@@ -67,9 +73,12 @@ module rv32_core #(
     wb_bus_t    wb_bus;
     redirect_t  ex_raw_redirect;
     redirect_t  raw_redirect;
+    redirect_t  trap_redirect;
     redirect_t  qualified_redirect;
     exception_t lsu_exception;
-    exception_t mem_exception;
+    exception_t final_mem_exception;
+    exception_t lsu_mem_exception_compat;
+    mem_wb_t    lsu_mem_wb_compat;
 
     // Preserve the complete EX candidate while ID/EX is held.
     logic      ex_hold_valid_q;
@@ -87,9 +96,15 @@ module rv32_core #(
 
     logic fetch_response_available;
     logic late_result_hazard;
+    logic csr_access_valid;
+    logic csr_access_illegal;
     logic ex_request_block;
     logic ex_request_wait;
+    logic mem_memory_access;
+    logic mem_stage_complete;
     logic mem_response_wait;
+    logic lsu_response_fire;
+    logic trap_take;
     logic redirect_commit;
     logic if_id_ready;
 
@@ -97,6 +112,7 @@ module rv32_core #(
     logic [31:0] mem_wb_forward_value;
     logic [31:0] wb_write_data;
     logic [31:0] lsu_load_result;
+    logic [31:0] csr_read_data;
 
     // Flattened control fields keep Icarus port widths unambiguous.
     logic id_ex_result_late;
@@ -157,10 +173,6 @@ module rv32_core #(
     assign raw_redirect =
         ex_hold_valid_q ? ex_redirect_hold_q : ex_raw_redirect;
 
-    // The final MEM exception path will drive this qualification when the
-    // standalone CSR/trap owner is integrated. Keep v0.1 behavior unchanged.
-    assign ex_request_block = 1'b0;
-
     always_comb begin
         ex_mem_forward_value = '0;
 
@@ -182,9 +194,15 @@ module rv32_core #(
     // Frontend control
     assign if_id_ready = (if_id_action == PIPE_LOAD);
 
-    assign qualified_redirect.valid =
-        redirect_commit && raw_redirect.valid;
-    assign qualified_redirect.target = raw_redirect.target;
+    always_comb begin
+        qualified_redirect = '0;
+
+        if (trap_take) begin
+            qualified_redirect = trap_redirect;
+        end else if (redirect_commit && raw_redirect.valid) begin
+            qualified_redirect = raw_redirect;
+        end
+    end
 
     // Coprocessor is disabled in v0.1.
     assign cp_req_valid    = 1'b0;
@@ -251,8 +269,89 @@ module rv32_core #(
         .mem_response_wait(mem_response_wait),
         .load_result      (lsu_load_result),
         .lsu_exception    (lsu_exception),
-        .mem_wb_candidate (mem_wb_candidate),
-        .mem_exception    (mem_exception)
+        .mem_wb_candidate (lsu_mem_wb_compat),
+        .mem_exception    (lsu_mem_exception_compat)
+    );
+
+    // MEM result ownership and final synchronous exception merge
+    assign mem_memory_access =
+        ex_mem_q.valid &&
+        (
+            ex_mem_q.mem_ctrl.memory_read ||
+            ex_mem_q.mem_ctrl.memory_write
+        );
+
+    assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
+    assign mem_stage_complete = !mem_memory_access || lsu_response_fire;
+
+    assign csr_access_valid =
+        ex_mem_q.valid &&
+        ex_mem_q.csr_ctrl.valid &&
+        !ex_mem_q.exception.valid;
+
+    always_comb begin
+        final_mem_exception = '0;
+
+        if (ex_mem_q.valid) begin
+            if (ex_mem_q.exception.valid) begin
+                final_mem_exception = ex_mem_q.exception;
+            end else if (csr_access_illegal) begin
+                final_mem_exception.valid = 1'b1;
+                final_mem_exception.cause =
+                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
+                final_mem_exception.value = ex_mem_q.instruction;
+            end else if (lsu_exception.valid) begin
+                final_mem_exception = lsu_exception;
+            end
+        end
+    end
+
+    assign ex_request_block =
+        ex_mem_q.valid && final_mem_exception.valid;
+
+    always_comb begin
+        mem_wb_candidate = '0;
+
+        mem_wb_candidate.valid =
+            ex_mem_q.valid &&
+            mem_stage_complete &&
+            !final_mem_exception.valid;
+
+        mem_wb_candidate.pc          = ex_mem_q.pc;
+        mem_wb_candidate.instruction = ex_mem_q.instruction;
+        mem_wb_candidate.pc_plus_4   = ex_mem_q.pc_plus_4;
+        mem_wb_candidate.exec_result = ex_mem_q.exec_result;
+        mem_wb_candidate.load_result = lsu_load_result;
+        mem_wb_candidate.csr_read_data = csr_read_data;
+        mem_wb_candidate.rd_addr     = ex_mem_q.rd_addr;
+        mem_wb_candidate.wb_ctrl     = ex_mem_q.wb_ctrl;
+        mem_wb_candidate.exception   = final_mem_exception;
+    end
+
+    rv32_csr_trap #(
+        .MTVEC_RESET (MTVEC_RESET)
+    ) u_csr_trap (
+        .clk                 (clk),
+        .rst                 (rst),
+        .mem_valid           (ex_mem_q.valid),
+        .mem_pc              (ex_mem_q.pc),
+        .mem_instruction     (ex_mem_q.instruction),
+        .mem_response_wait   (mem_response_wait),
+        .csr_access_valid    (csr_access_valid),
+        .csr_address         (ex_mem_q.csr_address),
+        .csr_operation       (ex_mem_q.csr_ctrl.operation),
+        .csr_source          (ex_mem_q.csr_source),
+        .csr_read_enable     (ex_mem_q.csr_ctrl.read_enable),
+        .csr_write_enable    (ex_mem_q.csr_ctrl.write_enable),
+        .final_mem_exception (final_mem_exception),
+        .csr_read_data       (csr_read_data),
+        .csr_access_illegal  (csr_access_illegal),
+        .trap_take           (trap_take),
+        .trap_redirect       (trap_redirect),
+        .trap_valid          (trap_valid),
+        .trap_pc             (trap_pc),
+        .trap_cause          (trap_cause),
+        .trap_value          (trap_value)
     );
 
     // Hazard detection and global pipeline control
@@ -289,7 +388,7 @@ module rv32_core #(
 
     rv32_pipeline_ctrl u_pipeline_ctrl (
         .rst                     (rst),
-        .trap_take               (1'b0),
+        .trap_take               (trap_take),
         .mem_response_wait       (mem_response_wait),
         .ex_request_wait         (ex_request_wait),
         .ex_multicycle_wait      (1'b0),
