@@ -1230,6 +1230,19 @@ module tb_rv32_core;
             repeat (3) begin
                 @(posedge clk);
                 #1;
+                check_condition(
+                    dut.ex_hold_valid_q,
+                    "backpressured EX request did not preserve a snapshot"
+                );
+                check_condition(
+                    dut.ex_mem_active_candidate.exec_result === 32'h0000_0100,
+                    "held EX request address changed after forwarding expired"
+                );
+                check_condition(
+                    dut.ex_mem_active_candidate.mem_ctrl.memory_write &&
+                        !dut.ex_mem_active_candidate.exception.valid,
+                    "held EX request changed memory control or exception state"
+                );
             end
             @(negedge clk);
             dmem_request_enable = 1'b1;

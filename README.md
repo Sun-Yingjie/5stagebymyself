@@ -96,9 +96,8 @@ waves/          阶段性波形落点
 
 ## 已知边界
 
-- 当前是 RV32I 的 37 条程序子集，不是完整 RV32I；
-- 未实现 `FENCE、ECALL、EBREAK`；
-- 非法指令、访问错误和非对齐访问尚未形成精确 trap 闭环；
+- 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
+- `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
 - 未实现 Zicsr、Machine Mode、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；
@@ -110,8 +109,9 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-完整 RV32I 与精确同步异常
-    → Zicsr + machine-mode-only 执行环境
+RV32I 剩余编码与同步异常来源
+    → Zicsr
+    → machine-mode-only 精确 trap 闭环
     → 迭代式 RV32M
     → 精确 Machine interrupt
     → ACT4 + 参考模型差分

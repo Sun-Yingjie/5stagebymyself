@@ -45,6 +45,7 @@ module tb_rv32_exu;
         test_jalr_forwarding_and_alignment();
         test_jalr_address_misaligned();
         test_byte_address_alignment();
+        test_half_address_alignment();
         test_load_address_misaligned();
         test_load_word_address_misaligned();
         test_store_address_misaligned();
@@ -559,6 +560,33 @@ module tb_rv32_exu;
 
             build_expected_candidate(32'h0000_1003, 32'b0);
             check_outputs(1'b0, 32'b0, "byte load accepts any byte address");
+        end
+    endtask
+
+    task automatic test_half_address_alignment;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0378,
+                32'h0000_9283,
+                5'd5
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1002;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_read = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_HALF;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_LOAD;
+
+            build_expected_candidate(32'h0000_1002, 32'b0);
+            check_outputs(
+                1'b0,
+                32'b0,
+                "halfword load accepts an address with bit zero clear"
+            );
         end
     endtask
 
