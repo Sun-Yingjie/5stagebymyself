@@ -118,3 +118,10 @@ waves/          阶段性波形落点
 - [v0.1 core 验证报告](docs/verification/rv32_core_verification_report.md)
 - [v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)
 - [SpyGlass baseline](docs/asic/spyglass_lint_rtl_baseline.md)
+
+## 开源许可
+
+本项目采用 [Apache License 2.0](LICENSE) 开源。你可以在遵守许可证条款的
+前提下使用、修改和分发本项目的 RTL、验证代码、脚本与文档。
+
+Copyright 2026 Sun-Yingjie
