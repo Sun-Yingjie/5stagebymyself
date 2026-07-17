@@ -19,6 +19,7 @@ rv32_core
 ├── rv32_ifu
 ├── rv32_idu
 │   ├── rv32_decoder
+│   ├── rv32_csr_decoder  Zicsr 先独立验证，完整路径接入时实例化
 │   ├── rv32_imm_gen
 │   └── rv32_regfile
 ├── rv32_exu
@@ -69,7 +70,22 @@ rv32_pkg.sv
 - 输出 ID/EX 所需的数据和语义控制；
 - 不拥有流水寄存器。
 
-`rv32_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。
+`rv32_decoder`、`rv32_csr_decoder`、`rv32_imm_gen` 和 `rv32_regfile` 是 IDU 内部可独立验证的子模块。当前 `rv32_csr_decoder` 先单独编译和测试，尚未由 IDU 实例化；在 CSR 流水承载和写回路径接通前，主 `rv32_decoder` 继续把 CSR 编码报告为 illegal instruction，防止指令过早合法化后以错误结果退休。
+
+#### 3.3.1 `rv32_csr_decoder`
+
+纯组合 CSR 语义译码叶子。它接收完整 32 位指令，自行确认 `SYSTEM` opcode 和六个 Zicsr `funct3`，输出：
+
+```text
+csr_ctrl.valid
+csr_ctrl.operation
+csr_ctrl.use_immediate
+csr_ctrl.read_enable
+csr_ctrl.write_enable
+uses_rs1
+```
+
+读写使能只由 `rd/rs1/uimm` 编码字段确定，不读取运行时寄存器值。该模块不判断 CSR 地址是否存在、访问权限、只读属性或 WARL 行为；IDU 后续直接从 `instruction[31:20]` 提取 `csr_address`，MEM 中的唯一 CSR 状态所有者负责访问合法性。
 
 ### 3.4 `rv32_exu`
 

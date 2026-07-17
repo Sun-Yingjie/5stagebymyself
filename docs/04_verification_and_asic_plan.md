@@ -38,7 +38,9 @@
 |---|---|
 | `rv32_imm_gen` | I/S/B/U/J 五类立即数的拼接和符号扩展 |
 | `rv32_decoder` | 指令到语义控制的映射、源寄存器使用标记、非法编码 |
+| `rv32_csr_decoder` | 六条 Zicsr 编码、寄存器/立即数源、CSR 读写抑制；不检查具体 CSR 合法性 |
 | `rv32_alu` | 算术、逻辑、移位以及 signed/unsigned 行为 |
+| `rv32_csr_alu` | CSR WRITE/SET/CLEAR 的候选写值，不拥有 CSR 状态 |
 | `rv32_branch_compare` | 六类条件分支的有符号和无符号比较 |
 | `rv32_regfile` | 双读单写、`x0` 恒零和同步写入；WB→ID 同周期旁路在 `rv32_idu` 中验证 |
 | `rv32_forward_unit` | 两级前递优先级、`x0` 排除、late-result hazard 检测 |
@@ -473,10 +475,11 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 1. 先用文档 PR 冻结精确同步异常契约，不修改 RTL；
 2. 补齐 RV32I 剩余编码和行为，使异常来源能够按统一数据包表达；
 3. 先加入无状态 CSR 读改写运算叶子及其单元测试；
-4. 再加入 Zicsr 语义译码、逐级承载字段、late-result hazard 与写回数据通路；
-5. 接入唯一 CSR 状态所有者、访问合法性检查和 MEM 最终异常合并，再完成最小 Machine Mode trap 状态、trap redirect 与 `mret`；
-6. 在同步异常闭环稳定后加入 RV32M 多周期单元；
-7. 最后独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
-8. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
+4. 独立加入 Zicsr 语义译码叶子并穷举六条指令与读写抑制规则，主 decoder 暂不把 CSR 合法化；
+5. 再把语义译码接入逐级承载字段、late-result hazard 与写回数据通路；
+6. 接入唯一 CSR 状态所有者、访问合法性检查和 MEM 最终异常合并，再完成最小 Machine Mode trap 状态、trap redirect 与 `mret`；
+7. 在同步异常闭环稳定后加入 RV32M 多周期单元；
+8. 最后独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
+9. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
 
 每个增量都遵循“先讲清架构行为和逐周期路径，再修改最小 RTL，再补定向测试与断言，最后跑全回归”的学习闭环。旧回归必须始终通过，不能依靠同时修改多个未验证模块来跨过中间失败状态。
