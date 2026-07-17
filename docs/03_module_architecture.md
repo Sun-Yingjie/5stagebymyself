@@ -565,7 +565,7 @@ load_result
 lsu_exception
 ```
 
-`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。`ex_request_block` 必须在 LSU 内部参与 `dmem_req_valid` 和 `request_fire` 的资格判断；不得只在 core 的 LSU 输出端与掉 `dmem_req_valid`，否则外部握手与 `outstanding` 状态会分裂。当前 core 固定输入为 0 以保持 v0.1 行为，接入最终 MEM 异常路径时再由更老异常资格驱动。LSU 只报告数据访问错误 `lsu_exception`；core 把 load 结果字段、CSR 结果字段和公共 EX/MEM 字段组装为完整 `mem_wb_candidate`。
+`ex_mem_candidate` 用于形成即将从 EX 进入 MEM 的新请求，`ex_mem_q` 对应当前 MEM 中已经发送请求并等待响应的指令。`ex_request_block` 必须在 LSU 内部参与 `dmem_req_valid` 和 `request_fire` 的资格判断；不得只在 core 的 LSU 输出端与掉 `dmem_req_valid`，否则外部握手与 `outstanding` 状态会分裂。当前 core 固定输入为 0 以保持 v0.1 行为，接入最终 MEM 异常路径时再由更老异常资格驱动。LSU 已并行导出纯 `load_result` 和只包含数据访问错误的 `lsu_exception`；过渡期仍保留旧 `mem_wb_candidate/mem_exception` 输出供 core 使用，下一原子集成增量再由 core 统一组装结果与合并最终异常。
 
 ### 9.6 Pipeline control
 

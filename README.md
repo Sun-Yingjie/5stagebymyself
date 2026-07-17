@@ -16,7 +16,7 @@
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Zicsr 流水契约、无状态 CSR 运算/语义译码叶子、独立 CSR/trap 状态所有者、LSU 内部请求阻断接入点，以及尚不可达的被动流水字段与 late-result 控制路径；
+- Zicsr 流水契约、无状态 CSR 运算/语义译码叶子、独立 CSR/trap 状态所有者、LSU 内部请求阻断与被动结果/异常通道，以及尚不可达的被动流水字段与 late-result 控制路径；
 - Icarus 14/14 叶子 TB、Icarus/Verilator core 7/7 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
@@ -98,7 +98,7 @@ waves/          阶段性波形落点
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
 - `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- Zicsr 已完成架构契约、无状态 CSR 运算/语义译码叶子、被动流水字段、通用 late-result 冒险控制、独立 CSR/trap 状态所有者和 LSU 内部请求阻断接入点；owner 尚未接入 core，阻断输入当前固定为 0，主 decoder 仍保持 CSR illegal，因此 CSR 指令仍不可执行；
+- Zicsr 已完成架构契约、无状态 CSR 运算/语义译码叶子、被动流水字段、通用 late-result 冒险控制、独立 CSR/trap 状态所有者，以及 LSU 内部请求阻断和被动结果/异常通道；owner 尚未接入 core，阻断输入当前固定为 0，主 decoder 仍保持 CSR illegal，因此 CSR 指令仍不可执行；
 - 未实现 Machine Mode、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；

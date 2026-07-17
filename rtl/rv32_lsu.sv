@@ -20,6 +20,8 @@ module rv32_lsu (
 
     output logic                 ex_request_wait,
     output logic                 mem_response_wait,
+    output logic [31:0]          load_result,
+    output rv32_pkg::exception_t lsu_exception,
     output rv32_pkg::mem_wb_t    mem_wb_candidate,
     output rv32_pkg::exception_t mem_exception
 );
@@ -35,7 +37,6 @@ module rv32_lsu (
     logic        mem_memory_access;
     logic [4:0]  store_shift_amount;
     logic [15:0] selected_load_data;
-    logic [31:0] load_result;
 
     // Transaction classification
     assign ex_memory_access = // 执行模块要发出访存请求
@@ -53,7 +54,7 @@ module rv32_lsu (
             ex_mem_q.mem_ctrl.memory_write
         );
 
-    // Response channel and MEM-stage exception
+    // Response channel and LSU-local access exception
     assign dmem_rsp_ready = !rst && outstanding_q;
     assign response_fire  = dmem_rsp_valid && dmem_rsp_ready;
 
@@ -61,27 +62,37 @@ module rv32_lsu (
         !rst && outstanding_q && !dmem_rsp_valid;
 
     always_comb begin
+        lsu_exception = '0;
+
+        if ( // 处在MEM阶段的指令不是异常指令，且MEM阶段的指令是访存指令，且当前收到了DMEM返回的结果，且返回的结果是error
+            ex_mem_q.valid &&
+            !ex_mem_q.exception.valid &&
+            mem_memory_access &&
+            response_fire &&
+            dmem_rsp_error
+        ) begin
+            lsu_exception.valid = 1'b1;
+            lsu_exception.value = ex_mem_q.exec_result; // 访存地址
+
+            if (ex_mem_q.mem_ctrl.memory_read) begin
+                lsu_exception.cause =
+                    EXCEPTION_CAUSE_LOAD_ACCESS_FAULT;
+            end else begin
+                lsu_exception.cause =
+                    EXCEPTION_CAUSE_STORE_ACCESS_FAULT;
+            end
+        end
+    end
+
+    // Compatibility exception output until core owns the final merge.
+    always_comb begin
         mem_exception = '0;
 
         if (ex_mem_q.valid) begin
             mem_exception = ex_mem_q.exception;
 
-            if ( // 处在MEM阶段的指令不是异常指令，且MEM阶段的指令是访存指令，且当前收到了DMEM返回的结果，且返回的结果是error
-                !ex_mem_q.exception.valid &&
-                mem_memory_access &&
-                response_fire &&
-                dmem_rsp_error
-            ) begin
-                mem_exception.valid = 1'b1;
-                mem_exception.value = ex_mem_q.exec_result; // 访存地址
-
-                if (ex_mem_q.mem_ctrl.memory_read) begin
-                    mem_exception.cause =
-                        EXCEPTION_CAUSE_LOAD_ACCESS_FAULT;
-                end else begin
-                    mem_exception.cause =
-                        EXCEPTION_CAUSE_STORE_ACCESS_FAULT;
-                end
+            if (!ex_mem_q.exception.valid) begin
+                mem_exception = lsu_exception;
             end
         end
     end

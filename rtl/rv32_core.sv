@@ -68,6 +68,7 @@ module rv32_core #(
     redirect_t  ex_raw_redirect;
     redirect_t  raw_redirect;
     redirect_t  qualified_redirect;
+    exception_t lsu_exception;
     exception_t mem_exception;
 
     // Preserve the complete EX candidate while ID/EX is held.
@@ -95,6 +96,7 @@ module rv32_core #(
     logic [31:0] ex_mem_forward_value;
     logic [31:0] mem_wb_forward_value;
     logic [31:0] wb_write_data;
+    logic [31:0] lsu_load_result;
 
     // Flattened control fields keep Icarus port widths unambiguous.
     logic id_ex_result_late;
@@ -247,6 +249,8 @@ module rv32_core #(
         .dmem_rsp_error   (dmem_rsp_error),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
+        .load_result      (lsu_load_result),
+        .lsu_exception    (lsu_exception),
         .mem_wb_candidate (mem_wb_candidate),
         .mem_exception    (mem_exception)
     );

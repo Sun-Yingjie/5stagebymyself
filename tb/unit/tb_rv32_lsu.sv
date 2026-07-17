@@ -27,7 +27,9 @@ module tb_rv32_lsu;
 
     logic       ex_request_wait;
     logic       mem_response_wait;
+    logic [31:0] load_result;
     mem_wb_t    mem_wb_candidate;
+    exception_t lsu_exception;
     exception_t mem_exception;
 
     int unsigned error_count;
@@ -51,6 +53,8 @@ module tb_rv32_lsu;
         .dmem_rsp_error   (dmem_rsp_error),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
+        .load_result      (load_result),
+        .lsu_exception    (lsu_exception),
         .mem_wb_candidate (mem_wb_candidate),
         .mem_exception    (mem_exception)
     );
@@ -390,6 +394,15 @@ module tb_rv32_lsu;
                     )
                 );
                 check_condition(
+                    load_result === expected_load_result,
+                    $sformatf(
+                        "%s: passive load=%h expected=%h",
+                        message,
+                        load_result,
+                        expected_load_result
+                    )
+                );
+                check_condition(
                     mem_wb_candidate.rd_addr === ex_mem_q.rd_addr,
                     $sformatf("%s: rd_addr is incorrect", message)
                 );
@@ -400,6 +413,10 @@ module tb_rv32_lsu;
                 check_condition(
                     !mem_wb_candidate.exception.valid,
                     $sformatf("%s: unexpected exception", message)
+                );
+                check_condition(
+                    !lsu_exception.valid,
+                    $sformatf("%s: unexpected LSU exception", message)
                 );
             end
         end
@@ -501,8 +518,9 @@ module tb_rv32_lsu;
                 "idle: response and wait outputs must be low"
             );
             check_condition(
-                !mem_wb_candidate.valid && !mem_exception.valid,
-                "idle: no MEM/WB candidate or exception"
+                !mem_wb_candidate.valid && !mem_exception.valid &&
+                    !lsu_exception.valid && (load_result == 32'b0),
+                "idle: no MEM/WB result or exception"
             );
 
             report_case(errors_before, "reset and idle protocol");
@@ -592,7 +610,8 @@ module tb_rv32_lsu;
             dmem_rsp_error   = 1'b1;
             settle();
             check_condition(
-                !dmem_rsp_ready && !mem_exception.valid,
+                !dmem_rsp_ready && !mem_exception.valid &&
+                    !lsu_exception.valid,
                 "response without outstanding request must be ignored"
             );
 
@@ -969,6 +988,10 @@ module tb_rv32_lsu;
                 "load access fault metadata"
             );
             check_condition(
+                lsu_exception === mem_exception,
+                "load access fault is exposed as pure LSU exception"
+            );
+            check_condition(
                 !mem_wb_candidate.valid,
                 "faulting load invalidates the MEM/WB candidate"
             );
@@ -1013,6 +1036,10 @@ module tb_rv32_lsu;
                 "store access fault metadata"
             );
             check_condition(
+                lsu_exception === mem_exception,
+                "store access fault is exposed as pure LSU exception"
+            );
+            check_condition(
                 !mem_wb_candidate.valid,
                 "faulting store invalidates the MEM/WB candidate"
             );
@@ -1045,6 +1072,10 @@ module tb_rv32_lsu;
             check_condition(
                 mem_exception === ex_mem_q.exception,
                 "incoming MEM exception metadata keeps priority"
+            );
+            check_condition(
+                !lsu_exception.valid,
+                "incoming early exception is not mislabeled as LSU fault"
             );
             check_condition(
                 !mem_wb_candidate.valid,
