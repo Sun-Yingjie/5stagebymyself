@@ -3,9 +3,11 @@
 ## 1. 验证结论
 
 - 验证日期：2026-07-17
-- RTL 基线：`dcd0a1f` 加本报告所述工作区修复
-- Icarus Verilog：12.0 stable
-- Verilator：5.036
+- 冻结标识：`v0.1-rtl-baseline`
+- RTL 基线：`dc287a6`；后续冻结准备未修改处理器 RTL
+- RTL/Test 回归基线：`85069b4`
+- Icarus Verilog：13.0 stable
+- Verilator：5.048
 - Core 定向测试：7/7 场景通过
 - 架构退休检查：98 条
 - DMem 请求检查：18 笔
@@ -234,8 +236,8 @@ vvp /tmp/tb_rv32_core.vvp
 `constant selects in always_* processes are not currently supported` 表示其敏感列表
 实现会保守包含所有位，不影响本次功能结果。
 
-Scoreboard 使用并行标量数组，而不是动态索引的 packed struct 数组，因为
-Icarus 12.0 对后者会触发 elaborator 内部断言。
+Scoreboard 使用并行标量数组，而不是动态索引的 packed struct 数组，以避免
+不同 Icarus 版本对动态索引 packed struct 数组的 elaboration 差异。
 
 ### 6.2 Verilator
 
@@ -244,9 +246,10 @@ verilator --binary --timing -Wall \
   -Wno-TIMESCALEMOD -Wno-DECLFILENAME \
   -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM \
   -Wno-UNSIGNED -Wno-BLKSEQ \
+  --Mdir /tmp/rv32-v01-verilator \
   --top-module tb_rv32_core \
   -f tb/core/rv32_core.f
-./obj_dir/Vtb_rv32_core
+/tmp/rv32-v01-verilator/Vtb_rv32_core
 ```
 
 结果：编译成功，7/7 场景和 1715 项检查通过。
@@ -268,6 +271,27 @@ Icarus 下重新编译并执行以下 11 个 testbench，全部通过：
 alu, branch_compare, decoder, exu, forward_unit, idu,
 ifu, imm_gen, lsu, pipeline_ctrl, regfile
 ```
+
+冻结版本统一使用以下入口复现全部 11 个叶子 TB、Icarus core 和 Verilator core：
+
+```bash
+scripts/run_v0_1_regression.sh
+```
+
+LSU TB 中枚举类型的条件选择使用显式 `if/else`，避免 Icarus 13 对三目表达式
+枚举结果要求显式 cast 的工具差异；该修改不涉及处理器 RTL。
+
+### 6.4 SpyGlass baseline
+
+SpyGlass L-2016.06 `lint/lint_rtl` 已完成：
+
+- command/design read：0 error、0 warning；
+- policy lint：0 error、76 warning；
+- waived：0。
+
+76 条 warning 已在 `docs/asic/spyglass_lint_rtl_baseline.md` 中按
+W415a/W240/W528 分类。当前结果是可解释的静态检查 baseline，不宣称
+lint-clean signoff。
 
 ## 7. 波形与调试入口
 
@@ -293,7 +317,8 @@ vvp /tmp/tb_rv32_core.vvp +DUMP=/tmp/rv32_core.vcd
 - 与当前 RV32I 子集匹配的 RISC-V 官方架构测试；
 - 锁定版本参考模型或 ISS 的退休流差分；
 - VCS 正式回归，本机当前 PATH 中没有 VCS；
-- SpyGlass、DC、Formality 和 PT 流程；
+- DC、Formality 和 PT 流程；
+- SpyGlass warning 的后续收敛和对象级 waiver；
 - 当前规划推迟的 trap/CSR、访问异常闭环和非对齐访问；
 - v0.2 的长延迟、广泛随机 backpressure 和随机程序验证。
 
