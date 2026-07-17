@@ -15,6 +15,10 @@ module rv32_exu (
     logic [31:0] alu_operand_b;
     logic [31:0] alu_result;
     logic branch_taken;
+    logic control_transfer_taken;
+    logic instruction_address_misaligned;
+    logic data_address_misaligned;
+    logic [31:0] redirect_target;
     alu_operation_e    alu_operation;
     branch_operation_e branch_operation;
 
@@ -74,6 +78,53 @@ assign branch_operation =
     );
 
     always_comb begin
+        if (id_ex_q.ex_ctrl.is_jalr) begin
+            redirect_target = {alu_result[31:1], 1'b0};
+        end
+        else begin
+            redirect_target = alu_result;
+        end
+
+        control_transfer_taken =
+            id_ex_q.valid &&
+            (
+                id_ex_q.ex_ctrl.is_jump ||
+                branch_taken
+            );
+
+        instruction_address_misaligned =
+            control_transfer_taken &&
+            (redirect_target[1:0] != 2'b00);
+
+        data_address_misaligned = 1'b0;
+        if (
+            id_ex_q.valid &&
+            (
+                id_ex_q.mem_ctrl.memory_read ||
+                id_ex_q.mem_ctrl.memory_write
+            )
+        ) begin
+            case (id_ex_q.mem_ctrl.memory_size)
+                MEM_SIZE_BYTE: begin
+                    data_address_misaligned = 1'b0;
+                end
+
+                MEM_SIZE_HALF: begin
+                    data_address_misaligned = alu_result[0];
+                end
+
+                MEM_SIZE_WORD: begin
+                    data_address_misaligned = |alu_result[1:0];
+                end
+
+                default: begin
+                    data_address_misaligned = 1'b0;
+                end
+            endcase
+        end
+    end
+
+    always_comb begin
         ex_mem_candidate = '0;
         ex_mem_candidate.valid = id_ex_q.valid;
         ex_mem_candidate.pc = id_ex_q.pc;
@@ -85,26 +136,40 @@ assign branch_operation =
         ex_mem_candidate.mem_ctrl = id_ex_q.mem_ctrl;
         ex_mem_candidate.wb_ctrl = id_ex_q.wb_ctrl;
         ex_mem_candidate.exception = id_ex_q.exception;
+
+        if (id_ex_q.valid && !id_ex_q.exception.valid) begin
+            if (instruction_address_misaligned) begin
+                ex_mem_candidate.exception.valid = 1'b1;
+                ex_mem_candidate.exception.cause =
+                    EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED;
+                ex_mem_candidate.exception.value = redirect_target;
+            end
+            else if (data_address_misaligned) begin
+                ex_mem_candidate.exception.valid = 1'b1;
+                ex_mem_candidate.exception.value = alu_result;
+
+                if (id_ex_q.mem_ctrl.memory_read) begin
+                    ex_mem_candidate.exception.cause =
+                        EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED;
+                end
+                else begin
+                    ex_mem_candidate.exception.cause =
+                        EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED;
+                end
+            end
+        end
+
+        if (ex_mem_candidate.exception.valid) begin
+            ex_mem_candidate.mem_ctrl = '0;
+            ex_mem_candidate.wb_ctrl = '0;
+        end
     end
     always_comb begin
         raw_redirect = '0;
 
         raw_redirect.valid =
-            id_ex_q.valid &&
-            !id_ex_q.exception.valid &&
-            (
-                id_ex_q.ex_ctrl.is_jump ||
-                branch_taken
-            );
-
-        if (id_ex_q.ex_ctrl.is_jalr) begin
-            raw_redirect.target = {
-                alu_result[31:1],
-                1'b0
-            };
-        end
-        else begin
-            raw_redirect.target = alu_result;
-        end
+            control_transfer_taken &&
+            !ex_mem_candidate.exception.valid;
+        raw_redirect.target = redirect_target;
     end
 endmodule

@@ -38,9 +38,17 @@ module tb_rv32_exu;
         test_zero_immediate_operands();
         test_store_address_and_data_forwarding();
         test_taken_branch_with_forwarding();
+        test_taken_branch_address_misaligned();
         test_not_taken_branch();
         test_jal_redirect();
+        test_jal_address_misaligned();
         test_jalr_forwarding_and_alignment();
+        test_jalr_address_misaligned();
+        test_byte_address_alignment();
+        test_load_address_misaligned();
+        test_load_word_address_misaligned();
+        test_store_address_misaligned();
+        test_store_half_address_misaligned();
         test_invalid_jump_does_not_redirect();
         test_exception_jump_does_not_redirect();
 
@@ -325,6 +333,40 @@ module tb_rv32_exu;
         end
     endtask
 
+    task automatic test_taken_branch_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0260,
+                32'h0020_8163,
+                5'd0
+            );
+
+            id_ex_q.rs1_data = 32'd9;
+            id_ex_q.rs2_data = 32'd9;
+            id_ex_q.uses_rs1 = 1'b1;
+            id_ex_q.uses_rs2 = 1'b1;
+            id_ex_q.immediate = 32'd2;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_PC;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.ex_ctrl.branch_operation = BR_EQ;
+
+            build_expected_candidate(32'h0000_0262, 32'd9);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_0262;
+
+            check_outputs(
+                1'b0,
+                32'b0,
+                "taken branch with misaligned target traps"
+            );
+        end
+    endtask
+
     task automatic test_not_taken_branch;
         begin
             set_defaults();
@@ -338,13 +380,17 @@ module tb_rv32_exu;
             id_ex_q.rs2_data = 32'd8;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
-            id_ex_q.immediate = 32'h0000_0020;
+            id_ex_q.immediate = 32'h0000_0002;
             id_ex_q.ex_ctrl.operand_a_select = OPA_PC;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
             id_ex_q.ex_ctrl.branch_operation = BR_EQ;
 
-            build_expected_candidate(32'h0000_0240, 32'd8);
-            check_outputs(1'b0, 32'b0, "not-taken branch does not redirect");
+            build_expected_candidate(32'h0000_0222, 32'd8);
+            check_outputs(
+                1'b0,
+                32'b0,
+                "not-taken branch ignores a misaligned target"
+            );
         end
     endtask
 
@@ -369,6 +415,34 @@ module tb_rv32_exu;
         end
     endtask
 
+    task automatic test_jal_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0320,
+                32'h0020_00ef,
+                5'd1
+            );
+
+            id_ex_q.immediate = 32'd2;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_PC;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.ex_ctrl.is_jump = 1'b1;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
+
+            build_expected_candidate(32'h0000_0322, 32'b0);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_0322;
+
+            check_outputs(1'b0, 32'b0, "JAL with misaligned target traps");
+        end
+    endtask
+
     task automatic test_jalr_forwarding_and_alignment;
         begin
             set_defaults();
@@ -389,14 +463,190 @@ module tb_rv32_exu;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
 
             rs1_forward_select   = FWD_EX_MEM;
-            ex_mem_forward_value = 32'h0000_1003;
+            ex_mem_forward_value = 32'h0000_1001;
 
-            build_expected_candidate(32'h0000_1007, 32'b0);
+            build_expected_candidate(32'h0000_1005, 32'b0);
             check_outputs(
                 1'b1,
-                32'h0000_1006,
-                "JALR uses forwarded rs1 and clears target bit zero"
+                32'h0000_1004,
+                "aligned JALR uses forwarded rs1 and clears target bit zero"
             );
+        end
+    endtask
+
+    task automatic test_jalr_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0360,
+                32'h0042_80e7,
+                5'd1
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1003;
+            id_ex_q.uses_rs1 = 1'b1;
+            id_ex_q.immediate = 32'd4;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.ex_ctrl.is_jump = 1'b1;
+            id_ex_q.ex_ctrl.is_jalr = 1'b1;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
+
+            build_expected_candidate(32'h0000_1007, 32'b0);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_1006;
+
+            check_outputs(
+                1'b0,
+                32'b0,
+                "JALR clears bit zero before checking IALIGN=32"
+            );
+        end
+    endtask
+
+    task automatic test_load_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0380,
+                32'h0000_9283,
+                5'd5
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1001;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_read = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_HALF;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_LOAD;
+
+            build_expected_candidate(32'h0000_1001, 32'b0);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_1001;
+
+            check_outputs(1'b0, 32'b0, "misaligned LH is poisoned in EX");
+        end
+    endtask
+
+    task automatic test_byte_address_alignment;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0370,
+                32'h0000_8283,
+                5'd5
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1003;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_read = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_BYTE;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_LOAD;
+
+            build_expected_candidate(32'h0000_1003, 32'b0);
+            check_outputs(1'b0, 32'b0, "byte load accepts any byte address");
+        end
+    endtask
+
+    task automatic test_load_word_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0390,
+                32'h0000_a283,
+                5'd5
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1002;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_read = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_WORD;
+            id_ex_q.wb_ctrl.register_write = 1'b1;
+            id_ex_q.wb_ctrl.writeback_select = WB_LOAD;
+
+            build_expected_candidate(32'h0000_1002, 32'b0);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_1002;
+
+            check_outputs(1'b0, 32'b0, "misaligned LW is poisoned in EX");
+        end
+    endtask
+
+    task automatic test_store_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_03a0,
+                32'h0051_2023,
+                5'd0
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1002;
+            id_ex_q.rs2_data = 32'hdead_beef;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_write = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_WORD;
+
+            build_expected_candidate(32'h0000_1002, 32'hdead_beef);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_1002;
+
+            check_outputs(1'b0, 32'b0, "misaligned SW is poisoned in EX");
+        end
+    endtask
+
+    task automatic test_store_half_address_misaligned;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_03b0,
+                32'h0051_1023,
+                5'd0
+            );
+
+            id_ex_q.rs1_data = 32'h0000_1001;
+            id_ex_q.rs2_data = 32'hdead_beef;
+            id_ex_q.immediate = 32'b0;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl.memory_write = 1'b1;
+            id_ex_q.mem_ctrl.memory_size = MEM_SIZE_HALF;
+
+            build_expected_candidate(32'h0000_1001, 32'hdead_beef);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            expected_candidate.exception.valid = 1'b1;
+            expected_candidate.exception.cause =
+                EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED;
+            expected_candidate.exception.value = 32'h0000_1001;
+
+            check_outputs(1'b0, 32'b0, "misaligned SH is poisoned in EX");
         end
     endtask
 
@@ -425,7 +675,7 @@ module tb_rv32_exu;
                 5'd1
             );
 
-            id_ex_q.immediate = 32'h0000_0020;
+            id_ex_q.immediate = 32'h0000_0002;
             id_ex_q.ex_ctrl.operand_a_select = OPA_PC;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
             id_ex_q.ex_ctrl.is_jump = 1'b1;
@@ -434,8 +684,14 @@ module tb_rv32_exu;
             id_ex_q.exception.cause = EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
             id_ex_q.exception.value = id_ex_q.instruction;
 
-            build_expected_candidate(32'h0000_0520, 32'b0);
-            check_outputs(1'b0, 32'b0, "exception jump does not redirect");
+            build_expected_candidate(32'h0000_0502, 32'b0);
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            check_outputs(
+                1'b0,
+                32'b0,
+                "incoming exception wins over EX misalignment"
+            );
         end
     endtask
 

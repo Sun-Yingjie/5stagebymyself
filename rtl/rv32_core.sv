@@ -70,11 +70,10 @@ module rv32_core #(
     redirect_t  qualified_redirect;
     exception_t mem_exception;
 
-    // Preserve fully forwarded EX results while ID/EX is held.
-    logic        ex_hold_valid_q;
-    logic [31:0] ex_exec_result_hold_q;
-    logic [31:0] ex_store_data_hold_q;
-    redirect_t   ex_redirect_hold_q;
+    // Preserve the complete EX candidate while ID/EX is held.
+    logic      ex_hold_valid_q;
+    ex_mem_t   ex_mem_hold_q;
+    redirect_t ex_redirect_hold_q;
 
     fetch_action_e fetch_action;
     pipe_action_e  if_id_action;
@@ -145,8 +144,7 @@ module rv32_core #(
         ex_mem_active_candidate = ex_mem_candidate;
 
         if (ex_hold_valid_q) begin
-            ex_mem_active_candidate.exec_result = ex_exec_result_hold_q;
-            ex_mem_active_candidate.store_data  = ex_store_data_hold_q;
+            ex_mem_active_candidate = ex_mem_hold_q;
         end
     end
 
@@ -337,10 +335,9 @@ module rv32_core #(
             ex_mem_q.valid <= 1'b0;
             mem_wb_q.valid <= 1'b0;
 
-            ex_hold_valid_q        <= 1'b0;
-            ex_exec_result_hold_q  <= '0;
-            ex_store_data_hold_q   <= '0;
-            ex_redirect_hold_q     <= '0;
+            ex_hold_valid_q    <= 1'b0;
+            ex_mem_hold_q      <= '0;
+            ex_redirect_hold_q <= '0;
         end else begin
             if_id_q  <= if_id_d;
             id_ex_q  <= id_ex_d;
@@ -352,10 +349,9 @@ module rv32_core #(
                 id_ex_q.valid &&
                 (id_ex_action == PIPE_HOLD)
             ) begin
-                ex_hold_valid_q       <= 1'b1;
-                ex_exec_result_hold_q <= ex_mem_candidate.exec_result;
-                ex_store_data_hold_q  <= ex_mem_candidate.store_data;
-                ex_redirect_hold_q    <= ex_raw_redirect;
+                ex_hold_valid_q    <= 1'b1;
+                ex_mem_hold_q      <= ex_mem_candidate;
+                ex_redirect_hold_q <= ex_raw_redirect;
             end else if (id_ex_action != PIPE_HOLD) begin
                 ex_hold_valid_q <= 1'b0;
             end
