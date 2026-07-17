@@ -71,6 +71,7 @@ UNIT_NAMES=(
     alu
     branch_compare
     csr_alu
+    csr_decoder
     decoder
     exu
     forward_unit

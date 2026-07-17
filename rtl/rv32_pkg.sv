@@ -47,6 +47,13 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_FENCE     = 3'b000;
     // jalr
     localparam logic [2:0] FUNCT3_JALR      = 3'b000;
+    // CSR
+    localparam logic [2:0] FUNCT3_CSRRW     = 3'b001;
+    localparam logic [2:0] FUNCT3_CSRRS     = 3'b010;
+    localparam logic [2:0] FUNCT3_CSRRC     = 3'b011;
+    localparam logic [2:0] FUNCT3_CSRRWI    = 3'b101;
+    localparam logic [2:0] FUNCT3_CSRRSI    = 3'b110;
+    localparam logic [2:0] FUNCT3_CSRRCI    = 3'b111;
 // exception
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED = 32'd0;
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
@@ -123,6 +130,14 @@ package rv32_pkg;
         CSR_SET             = 2'b01,
         CSR_CLEAR           = 2'b10
     } csr_operation_e;
+
+    typedef struct packed { // decoded Zicsr instruction semantics
+        logic           valid;
+        csr_operation_e operation;
+        logic           use_immediate;
+        logic           read_enable;
+        logic           write_enable;
+    } csr_ctrl_t;
 
     typedef enum logic [1:0] { // sel rs source
         FWD_REG             = 2'b00, // from regfile

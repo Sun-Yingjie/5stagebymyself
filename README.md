@@ -16,11 +16,11 @@
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Zicsr 流水契约和无状态 CSR 运算叶子模块；
-- Icarus 12/12 叶子 TB、Icarus/Verilator core 7/7 场景通过；
+- Zicsr 流水契约和无状态 CSR 运算、语义译码叶子模块；
+- Icarus 13/13 叶子 TB、Icarus/Verilator core 7/7 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
-`HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前项目状态以本 README、[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)为准。
+`HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前开发状态以本 README 为准；[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)保留的是 v0.1 基线证据，不随之后新增的叶子模块测试计数改写。
 
 ## v0.1 指令范围
 
@@ -57,10 +57,8 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-12/12 unit TBs passed
-Icarus core: 7/7 scenarios passed
-Verilator core: 7/7 scenarios passed
-99 retirements, 18 DMem requests, 1733 checks
+[PASS] rv32_core: 7/7 scenarios, 99 retirements, 18 DMem requests, 1733 checks
+[PASS] v0.1 regression completed: 13/13 unit TBs and core TB passed
 ```
 
 如需保留到指定位置，可以设置：
@@ -100,7 +98,7 @@ waves/          阶段性波形落点
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
 - `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- Zicsr 仅完成架构契约和无状态 CSR 运算叶子，尚未接入 decoder、流水与 CSR 状态；
+- Zicsr 仅完成架构契约和无状态 CSR 运算/语义译码叶子；主 decoder 仍保持 CSR illegal，尚未接入流水与 CSR 状态；
 - 未实现 Machine Mode、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；

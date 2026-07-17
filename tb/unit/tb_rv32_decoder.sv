@@ -196,9 +196,34 @@ module tb_rv32_decoder;
                 "MRET remains illegal before Machine Mode"
             );
             check_decode(
-                32'h3000_1073,
+                make_csr_instruction(FUNCT3_CSRRW),
                 expected_ctrl,
-                "CSR instruction remains illegal before Zicsr"
+                "CSRRW remains illegal before full Zicsr path"
+            );
+            check_decode(
+                make_csr_instruction(FUNCT3_CSRRS),
+                expected_ctrl,
+                "CSRRS remains illegal before full Zicsr path"
+            );
+            check_decode(
+                make_csr_instruction(FUNCT3_CSRRC),
+                expected_ctrl,
+                "CSRRC remains illegal before full Zicsr path"
+            );
+            check_decode(
+                make_csr_instruction(FUNCT3_CSRRWI),
+                expected_ctrl,
+                "CSRRWI remains illegal before full Zicsr path"
+            );
+            check_decode(
+                make_csr_instruction(FUNCT3_CSRRSI),
+                expected_ctrl,
+                "CSRRSI remains illegal before full Zicsr path"
+            );
+            check_decode(
+                make_csr_instruction(FUNCT3_CSRRCI),
+                expected_ctrl,
+                "CSRRCI remains illegal before full Zicsr path"
             );
         end
     endtask
@@ -351,6 +376,20 @@ module tb_rv32_decoder;
             value[31:25] = funct7;
 
             make_instruction = value;
+        end
+    endfunction
+
+    function automatic logic [31:0] make_csr_instruction (
+        input logic [2:0] funct3
+    );
+        begin
+            make_csr_instruction = {
+                12'h300,
+                5'd1,
+                funct3,
+                5'd2,
+                OPCODE_SYSTEM
+            };
         end
     endfunction
 
