@@ -458,7 +458,8 @@ MEM 检测 → 当拍提交
 这样数据访问错误等最晚异常已经确定；更老指令最多位于 WB，更年轻指令位于 EX、ID 和 IF，可以统一处理。最终资格条件为：
 
 ```text
-trap_take = ex_mem_q.valid
+trap_take = !rst
+         && ex_mem_q.valid
          && final_mem_exception.valid
          && !mem_response_wait
 ```

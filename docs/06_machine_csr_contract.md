@@ -1,6 +1,6 @@
 # v0.2 Machine CSR Profile 与状态所有者契约
 
-> 状态：Zicsr 状态所有者实现前的冻结契约。<br>
+> 状态：冻结契约；`rv32_csr_trap` 已独立实现和单测，尚未接入 core。<br>
 > 适用范围：RV32、`IALIGN=32`、单 hart、仅 M-mode。<br>
 > 规范基线：[Zicsr 2.0](https://docs.riscv.org/reference/isa/v20260120/unpriv/zicsr.html)、[Privileged Architecture 1.13 Machine-Level ISA](https://docs.riscv.org/reference/isa/v20260120/priv/machine.html) 和 [CSR address map](https://docs.riscv.org/reference/isa/v20260120/priv/priv-csrs.html)。
 
@@ -139,7 +139,8 @@ reset
 `final_mem_exception`；状态所有者再根据最终异常产生：
 
 ```text
-trap_take = mem_valid
+trap_take = !rst
+         && mem_valid
          && final_mem_exception.valid
          && !mem_response_wait
 ```
@@ -161,7 +162,7 @@ trap_take = mem_valid
 
 ## 8. Owner 接口与集成边界
 
-首版 `rv32_csr_trap` 先作为未接 core 的独立模块实现和单测。接口沿用
+`rv32_csr_trap` 当前作为未接 core 的独立模块实现并完成单测。接口沿用
 `docs/03_module_architecture.md` 第 9.7 节：
 
 ```text

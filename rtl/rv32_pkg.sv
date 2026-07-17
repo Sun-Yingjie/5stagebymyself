@@ -125,6 +125,19 @@ package rv32_pkg;
     } branch_operation_e;
 
 // CSR control
+    localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
+    localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
+    localparam logic [11:0] CSR_ADDR_MTVEC      = 12'h305;
+    localparam logic [11:0] CSR_ADDR_MSCRATCH   = 12'h340;
+    localparam logic [11:0] CSR_ADDR_MEPC       = 12'h341;
+    localparam logic [11:0] CSR_ADDR_MCAUSE     = 12'h342;
+    localparam logic [11:0] CSR_ADDR_MTVAL      = 12'h343;
+    localparam logic [11:0] CSR_ADDR_MVENDORID  = 12'hF11;
+    localparam logic [11:0] CSR_ADDR_MARCHID    = 12'hF12;
+    localparam logic [11:0] CSR_ADDR_MIMPID     = 12'hF13;
+    localparam logic [11:0] CSR_ADDR_MHARTID    = 12'hF14;
+    localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
+
     typedef enum logic [1:0] { // select CSR read-modify-write operation
         CSR_WRITE           = 2'b00,
         CSR_SET             = 2'b01,

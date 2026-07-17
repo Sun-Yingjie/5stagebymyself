@@ -1,7 +1,7 @@
 # 模块划分与顶层集成架构
 
 > 上位规格：`00_processor_architecture.md`、`01_core_system_context.md`、`02_pipeline_contract.md`  
-> 当前阶段：冻结模块职责、状态所有权、依赖关系和顶层集成方式，暂不编写 RTL。
+> 当前阶段：v0.1 模块边界已冻结；v0.2 按本契约增量实现 Zicsr/Machine Mode，尚未接入 core。
 
 ## 1. 模块划分原则
 
@@ -28,8 +28,8 @@ rv32_core
 ├── rv32_lsu
 ├── rv32_forward_unit
 ├── rv32_pipeline_ctrl
-└── rv32_csr_trap         Machine Mode 增量加入
-    └── rv32_csr_alu      Zicsr 先实现和独立验证
+└── rv32_csr_trap         已独立实现和验证，待 core 接入
+    └── rv32_csr_alu      已实现并由状态所有者实例化
 ```
 
 另有非模块公共包：
@@ -132,7 +132,7 @@ v0.2 加入，拥有 `mstatus`、`misa`、`mtvec`、`mscratch`、`mepc`、`mcaus
 - 指向 trap handler 的 `trap_redirect`；
 - `trap_valid/pc/cause/value` 跟踪事件。
 
-该模块不检测指令编码或外部总线错误，也不直接清除流水寄存器；但它是 CSR 地址存在性、权限和只读属性的唯一检查者，并在内部实例化 `rv32_csr_alu` 生成候选写值。流水动作仍由 `rv32_pipeline_ctrl` 统一选择。后续 Zicsr/Machine Mode RTL 按第 9.7 节冻结的接口接入，`mret` 再作为 Machine Mode 增量扩展。v0.1 中不存在该模块实例。
+该模块不检测指令编码或外部总线错误，也不直接清除流水寄存器；但它是 CSR 地址存在性、权限和只读属性的唯一检查者，并在内部实例化 `rv32_csr_alu` 生成候选写值。流水动作仍由 `rv32_pipeline_ctrl` 统一选择。当前模块已作为独立叶子实现和单测，但尚未在 core 中实例化；后续按第 9.7 节接口接入，`mret` 再作为 Machine Mode 增量扩展。
 
 ### 3.9 `rv32_csr_alu`
 
@@ -624,7 +624,7 @@ trap_cause
 trap_value
 ```
 
-CSR 状态所有者组合检查地址存在性、当前权限和只读属性，产生 `csr_access_illegal`；仅当合法且 `csr_read_enable=1` 时读取修改前的 `csr_read_data`，被抑制的读取不得产生读副作用。core 按“随指令携带的早期异常 → 有效 CSR 非法访问 → LSU 访问错误”合并 `final_mem_exception`。`trap_take` 只在 `mem_valid && final_mem_exception.valid && !mem_response_wait` 时有效；该周期的时钟沿把 `mem_pc`、`final_mem_exception.cause/value` 分别写入 `mepc`、`mcause`、`mtval`。`trap_redirect` 取自 `mtvec` 定义的 trap 入口。
+CSR 状态所有者组合检查地址存在性、当前权限和只读属性，产生 `csr_access_illegal`；仅当合法且 `csr_read_enable=1` 时读取修改前的 `csr_read_data`，被抑制的读取不得产生读副作用。core 按“随指令携带的早期异常 → 有效 CSR 非法访问 → LSU 访问错误”合并 `final_mem_exception`。`trap_take` 只在 `!rst && mem_valid && final_mem_exception.valid && !mem_response_wait` 时有效；该周期的时钟沿把 `mem_pc`、`final_mem_exception.cause/value` 分别写入 `mepc`、`mcause`、`mtval`。`trap_redirect` 取自 `mtvec` 定义的 trap 入口。
 
 同一个提交沿上，`final_mem_exception.valid=1` 时禁止该异常指令的显式 CSR 写，只执行同步 trap 自动更新；无异常且合法的 CSR 指令才按 `csr_write_enable` 更新目标 CSR。未来异步中断与同周期显式 CSR 写的组合顺序不在本契约中预判。
 
