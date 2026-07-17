@@ -63,6 +63,7 @@ rv32_pkg.sv
 - 组织指令译码、立即数生成和通用寄存器读取；
 - 接收 WB 写回端口；
 - 完成 WB→ID 显式旁路；
+- 将 `FENCE` 译码为无源寄存器、无写回、无访存控制的合法流水指令；
 - 输出 ID/EX 所需的数据和语义控制；
 - 不拥有流水寄存器。
 
@@ -442,7 +443,7 @@ wb_bus
 id_ex_candidate
 ```
 
-IDU 内部完成译码、立即数生成、寄存器读取和 WB→ID 旁路。候选数据同时向 forward unit 提供当前 ID 指令的源寄存器语义。
+IDU 内部完成译码、立即数生成、寄存器读取和 WB→ID 旁路。候选数据同时向 forward unit 提供当前 ID 指令的源寄存器语义。`FENCE` 不需要新增控制字段：decoder 清除 `illegal_instruction`，保持所有副作用控制为 0，并选择确定的 `zero + zero` 内部执行结果，避免被忽略的编码字段引入 X 传播；现有 valid 流水自然把它送到 WB 退休。
 
 ### 9.3 Forward unit
 

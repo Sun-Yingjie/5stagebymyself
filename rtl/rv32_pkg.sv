@@ -7,6 +7,7 @@ package rv32_pkg;
     localparam logic [6:0] OPCODE_BRANCH    = 7'b110_0011;
     localparam logic [6:0] OPCODE_LOAD      = 7'b000_0011;
     localparam logic [6:0] OPCODE_STORE     = 7'b010_0011;
+    localparam logic [6:0] OPCODE_MISC_MEM  = 7'b000_1111;
     localparam logic [6:0] OPCODE_OP_IMM    = 7'b001_0011;
     localparam logic [6:0] OPCODE_OP        = 7'b011_0011;
 // funct7
@@ -38,6 +39,8 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_SB        = 3'b000;
     localparam logic [2:0] FUNCT3_SH        = 3'b001;
     localparam logic [2:0] FUNCT3_SW        = 3'b010;
+    // memory ordering
+    localparam logic [2:0] FUNCT3_FENCE     = 3'b000;
     // jalr
     localparam logic [2:0] FUNCT3_JALR      = 3'b000;
 // exception

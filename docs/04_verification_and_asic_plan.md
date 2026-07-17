@@ -122,7 +122,9 @@ retire_rd_data
 - 六类条件分支的 taken 和 not-taken；
 - `JAL`、`JALR`，包括 JALR 目标最低位清零；
 - `LB/LBU/LH/LHU/LW`；
-- `SB/SH/SW`。
+- `SB/SH/SW`；
+- `FENCE` 的标准编码、`FENCE.TSO` 编码和带非零保留字段的编码均作为合法无副作用指令退休；
+- `FENCE.I` 在未声明 Zifencei 时仍按非法指令处理。
 
 需要特别覆盖 `0`、`1`、`-1`、最高位为 1、最大正数、最小负数以及移位量边界。
 

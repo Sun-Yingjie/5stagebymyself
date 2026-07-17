@@ -734,6 +734,7 @@ module tb_rv32_core;
                 5'd23,
                 32'h0000_1058
             );
+            emit_no_write_instruction(32'h0ff0_000f);
             emit_no_write_instruction(
                 instruction_op_imm(FUNCT3_ADD_SUB, 5'd0, 5'd0, 32'd123)
             );
