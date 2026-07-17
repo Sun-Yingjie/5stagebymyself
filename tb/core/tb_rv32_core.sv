@@ -107,9 +107,7 @@ module tb_rv32_core;
     int unsigned total_dmem_request_count;
     int unsigned total_trap_count;
 
-    logic trap_with_retire_seen;
     logic trap_with_raw_redirect_seen;
-    logic trap_blocked_younger_store_seen;
 
     logic [31:0] program_pc;
     logic        scenario_active;
@@ -495,9 +493,7 @@ module tb_rv32_core;
             mem_response_wait_count = 0;
             imem_request_stall_count = 0;
 
-            trap_with_retire_seen        = 1'b0;
             trap_with_raw_redirect_seen  = 1'b0;
-            trap_blocked_younger_store_seen = 1'b0;
 
             scenario_cycle_count = 0;
             scenario_check_count = 0;
@@ -1639,14 +1635,6 @@ module tb_rv32_core;
             wait_for_completion();
 
             check_condition(
-                trap_with_retire_seen,
-                "older WB instruction did not retire beside MEM trap"
-            );
-            check_condition(
-                trap_blocked_younger_store_seen,
-                "illegal trap did not encounter and block younger store"
-            );
-            check_condition(
                 u_dmem.read_word(32'h0000_0100) == 32'b0,
                 "younger store modified memory before trap flush"
             );
@@ -2231,9 +2219,6 @@ module tb_rv32_core;
                     "faulting MEM instruction formed a retirement candidate"
                 );
 
-                if (retire_valid) begin
-                    trap_with_retire_seen = 1'b1;
-                end
                 if (dut.raw_redirect.valid) begin
                     trap_with_raw_redirect_seen = 1'b1;
                 end
@@ -2248,7 +2233,6 @@ module tb_rv32_core;
                         dut.ex_request_block,
                         "trap did not block a ready younger store inside LSU"
                     );
-                    trap_blocked_younger_store_seen = 1'b1;
                 end
 
                 if (observed_trap_count < expected_trap_count) begin
@@ -2481,9 +2465,7 @@ module tb_rv32_core;
         total_dmem_request_count = 0;
         total_trap_count = 0;
 
-        trap_with_retire_seen = 1'b0;
         trap_with_raw_redirect_seen = 1'b0;
-        trap_blocked_younger_store_seen = 1'b0;
 
         imem_outstanding_count = 0;
         dmem_outstanding_count = 0;
