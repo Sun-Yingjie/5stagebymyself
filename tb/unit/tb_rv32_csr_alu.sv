@@ -64,6 +64,14 @@ module tb_rv32_csr_alu;
         );
 
         check_csr_alu(
+            CSR_SET,
+            32'h0f0f_00ff,
+            32'h00ff_0f0f,
+            32'h0fff_0fff,
+            "set overlapping bits uses OR"
+        );
+
+        check_csr_alu(
             CSR_CLEAR,
             32'haaaa_5555,
             32'h0000_0000,
