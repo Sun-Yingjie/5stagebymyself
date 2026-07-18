@@ -194,6 +194,11 @@ retire_rd_data
 
 每个异常用例都要同时提供正向证据和负向证据：既检查预期 trap 出现，也检查本不应发生的寄存器写、存储器请求、普通退休和重复重定向没有出现。
 
+当前 directed cause 矩阵的实现与复现证据见
+[v0.2 同步异常 Cause 矩阵验证报告](verification/v0.2_sync_trap_cause_matrix_report.md)。
+该报告只关闭 G3A 的定向验证门禁；本节 9.2 要求的架构测试与其他 v0.2 门禁仍须
+独立完成。
+
 ### 3.6 Zicsr
 
 - 六条 CSR 指令全部覆盖寄存器和立即数源；
@@ -482,10 +487,11 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 6. 冻结 Machine CSR profile，再独立实现唯一 CSR/trap 状态所有者及其单元测试，主 decoder 仍保持 CSR illegal；
 7. 已重构 LSU/core 的 MEM 结果组装边界，接入 CSR 合法性检查、最终异常合并、年轻 DMem 请求抑制、trap redirect 和提交跟踪；
 8. 已激活六条 CSR 指令，并完成 CSR late-result、连续访问、读写抑制、只读/未知地址和精确 trap 的 core 级 directed test；
-9. 同步异常 cause 矩阵闭环后独立实现 `MRET`；
-10. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源，随后冻结 v0.3 最小 Machine Mode；
-11. 独立加入 RV32M 多周期单元；
-12. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
-13. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
+9. 同步异常 directed cause 矩阵已经闭环；下一增量先接入 ACT4 RV32I runner，再补齐或明确可变延迟与 backpressure 门禁，全部通过后才冻结 v0.2；
+10. v0.2 冻结后独立实现 `MRET`；
+11. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源，随后冻结 v0.3 最小 Machine Mode；
+12. 独立加入 RV32M 多周期单元；
+13. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
+14. 各阶段持续复用官方架构测试，随后再分别推进差分验证、综合和 STA 闭环。
 
 每个增量都遵循“先讲清架构行为和逐周期路径，再修改最小 RTL，再补定向测试与断言，最后跑全回归”的学习闭环。旧回归必须始终通过，不能依靠同时修改多个未验证模块来跨过中间失败状态。
