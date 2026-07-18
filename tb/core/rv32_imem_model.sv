@@ -25,6 +25,7 @@ module rv32_imem_model #(
     int unsigned request_word_index;
 
     logic [31:0] memory [0:WORD_COUNT-1];
+    logic        error_map [0:WORD_COUNT-1];
 
     logic        transaction_pending_q;
     logic        response_started_q;
@@ -96,17 +97,16 @@ module rv32_imem_model #(
                 transaction_pending_q <= 1'b1;
                 response_started_q    <= 1'b0;
 
-                response_error_q <=
-                    !request_addr_aligned ||
-                    !request_addr_in_range;
-
                 if (
                     request_addr_aligned &&
                     request_addr_in_range
                 ) begin
+                    response_error_q <=
+                        error_map[request_word_index];
                     response_data_q <=
                         memory[request_word_index];
                 end else begin
+                    response_error_q <= 1'b1;
                     response_data_q <= '0;
                 end
             end
@@ -125,6 +125,7 @@ module rv32_imem_model #(
                 word_index++
             ) begin
                 memory[word_index] = fill_word;
+                error_map[word_index] = 1'b0;
             end
         end
     endtask
@@ -162,10 +163,52 @@ module rv32_imem_model #(
         end
     endtask
 
+    task automatic set_error(
+        input logic [31:0] address,
+        input logic        error
+    );
+        logic [31:0] offset;
+        int unsigned word_index;
+        begin
+            offset = address - BASE_ADDR;
+
+            if (address[1:0] != 2'b00) begin
+                $fatal(
+                    1,
+                    "rv32_imem_model: unaligned error address %08h",
+                    address
+                );
+            end
+
+            if (
+                (address < BASE_ADDR) ||
+                (offset >= MEMORY_SIZE_BYTES)
+            ) begin
+                $fatal(
+                    1,
+                    "rv32_imem_model: error address %08h is out of range",
+                    address
+                );
+            end
+
+            word_index = offset >> 2;
+            error_map[word_index] = error;
+        end
+    endtask
+
     task automatic load_hex(
         input string file_name
     );
+        int unsigned word_index;
         begin
+            for (
+                word_index = 0;
+                word_index < WORD_COUNT;
+                word_index++
+            ) begin
+                error_map[word_index] = 1'b0;
+            end
+
             $readmemh(file_name, memory);
         end
     endtask

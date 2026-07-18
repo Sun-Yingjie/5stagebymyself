@@ -192,6 +192,16 @@ module tb_rv32_decoder;
                 "ECALL with nonzero rs1 is illegal"
             );
             check_decode(
+                INSTRUCTION_EBREAK | 32'h0000_0080,
+                expected_ctrl,
+                "EBREAK with nonzero rd is illegal"
+            );
+            check_decode(
+                INSTRUCTION_EBREAK | 32'h0000_8000,
+                expected_ctrl,
+                "EBREAK with nonzero rs1 is illegal"
+            );
+            check_decode(
                 32'h3020_0073,
                 expected_ctrl,
                 "MRET remains illegal before Machine Mode"
