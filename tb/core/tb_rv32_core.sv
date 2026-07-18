@@ -83,6 +83,8 @@ module tb_rv32_core;
     int unsigned observed_dmem_request_count;
     int unsigned expected_trap_count;
     int unsigned observed_trap_count;
+    int unsigned expected_trap_vector_fetch_count;
+    int unsigned observed_trap_vector_fetch_count;
 
     int unsigned expected_late_result_hazard_count;
     int unsigned expected_redirect_count;
@@ -543,6 +545,75 @@ module tb_rv32_core;
                 rd_addr,
                 rd_data
             );
+            expected_trap_vector_fetch_count++;
+        end
+    endtask
+
+    task automatic run_single_trap_scenario(
+        input string       name,
+        input logic [31:0] fault_instruction,
+        input logic [31:0] expected_cause,
+        input logic [31:0] expected_value,
+        input logic        inject_imem_error,
+        input logic [31:0] handler_value
+    );
+        logic [31:0] younger_store;
+        logic [31:0] fault_pc;
+        begin
+            begin_scenario(name);
+
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd30,
+                32'h0000_0100
+            );
+
+            emit_writeback_instruction(
+                instruction_op_imm(
+                    FUNCT3_ADD_SUB,
+                    5'd30,
+                    5'd0,
+                    32'h0000_005a
+                ),
+                5'd30,
+                32'h0000_005a
+            );
+
+            fault_pc = program_pc;
+            u_imem.write_word(fault_pc, fault_instruction);
+            if (inject_imem_error) begin
+                u_imem.set_error(fault_pc, 1'b1);
+            end
+            expect_trap(
+                fault_pc,
+                expected_cause,
+                expected_value
+            );
+            program_pc = program_pc + 32'd4;
+
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd31, handler_value);
+
+            release_reset();
+            wait_for_completion();
+
+            check_condition(
+                u_dmem.read_word(32'h0000_0100) == 32'b0,
+                "faulting or younger store modified memory"
+            );
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "trap scenario left a phantom LSU transaction"
+            );
+            check_condition(
+                (dut.u_csr_trap.mepc_q == fault_pc) &&
+                (dut.u_csr_trap.mcause_q == expected_cause) &&
+                (dut.u_csr_trap.mtval_q == expected_value),
+                "trap CSRs do not match the committed trap payload"
+            );
+
+            end_scenario();
         end
     endtask
 
@@ -568,6 +639,8 @@ module tb_rv32_core;
             observed_dmem_request_count = 0;
             expected_trap_count         = 0;
             observed_trap_count         = 0;
+            expected_trap_vector_fetch_count = 0;
+            observed_trap_vector_fetch_count = 0;
 
             expected_late_result_hazard_count = 0;
             expected_redirect_count          = 0;
@@ -655,6 +728,15 @@ module tb_rv32_core;
                     "trap count %0d, expected %0d",
                     observed_trap_count,
                     expected_trap_count
+                )
+            );
+            check_condition(
+                observed_trap_vector_fetch_count ==
+                    expected_trap_vector_fetch_count,
+                $sformatf(
+                    "trap-vector fetch count %0d, expected %0d",
+                    observed_trap_vector_fetch_count,
+                    expected_trap_vector_fetch_count
                 )
             );
             check_condition(
@@ -1914,6 +1996,188 @@ module tb_rv32_core;
         end
     endtask
 
+    task automatic scenario_control_address_misaligned;
+        logic [31:0] not_taken_branch;
+        logic [31:0] faulting_jalr;
+        logic [31:0] younger_store;
+        logic [31:0] fault_pc;
+        begin
+            begin_scenario("control_address_misaligned");
+
+            emit_writeback_instruction(
+                instruction_op_imm(FUNCT3_ADD_SUB, 5'd1, 5'd0, 32'd3),
+                5'd1,
+                32'd3
+            );
+
+            not_taken_branch = encoder_b(
+                FUNCT3_BEQ,
+                5'd1,
+                5'd0,
+                32'd2
+            );
+            emit_no_write_instruction(not_taken_branch);
+
+            fault_pc = program_pc;
+            faulting_jalr = instruction_jalr(5'd2, 5'd1, 32'd0);
+            u_imem.write_word(fault_pc, faulting_jalr);
+            expect_trap(
+                fault_pc,
+                EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED,
+                32'h0000_0002
+            );
+            program_pc = program_pc + 32'd4;
+
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd1,
+                32'h0000_0100
+            );
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd31, 32'h0000_0020);
+
+            release_reset();
+            wait_for_completion();
+
+            check_condition(
+                u_dmem.read_word(32'h0000_0100) == 32'b0,
+                "younger store survived the misaligned control transfer"
+            );
+            check_condition(
+                (dut.u_csr_trap.mepc_q == fault_pc) &&
+                (dut.u_csr_trap.mcause_q ==
+                    EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED) &&
+                (dut.u_csr_trap.mtval_q == 32'h0000_0002),
+                "control-transfer trap CSRs are incorrect"
+            );
+
+            end_scenario();
+        end
+    endtask
+
+    task automatic scenario_store_access_fault;
+        logic [31:0] faulting_store;
+        logic [31:0] younger_store;
+        logic [31:0] fault_pc;
+        begin
+            begin_scenario("store_access_fault");
+            dmem_response_enable = 1'b0;
+
+            emit_writeback_instruction(
+                instruction_op_imm(
+                    FUNCT3_ADD_SUB,
+                    5'd1,
+                    5'd0,
+                    32'h0000_0400
+                ),
+                5'd1,
+                32'h0000_0400
+            );
+            emit_writeback_instruction(
+                instruction_op_imm(
+                    FUNCT3_ADD_SUB,
+                    5'd2,
+                    5'd0,
+                    32'h0000_005a
+                ),
+                5'd2,
+                32'h0000_005a
+            );
+
+            fault_pc = program_pc;
+            faulting_store = encoder_s(
+                FUNCT3_SW,
+                5'd1,
+                5'd2,
+                32'd0
+            );
+            u_imem.write_word(fault_pc, faulting_store);
+            expect_dmem_request(
+                1'b1,
+                32'h0000_0400,
+                32'h0000_005a,
+                4'b1111
+            );
+            expect_trap(
+                fault_pc,
+                EXCEPTION_CAUSE_STORE_ACCESS_FAULT,
+                32'h0000_0400
+            );
+            program_pc = program_pc + 32'd4;
+
+            younger_store = encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd2,
+                32'h0000_0100
+            );
+            emit_squashed_instruction(younger_store);
+            install_trap_handler(5'd31, 32'h0000_0021);
+
+            minimum_mem_response_wait_count = 1;
+
+            release_reset();
+            while (
+                !(
+                    (dut.mem_response_wait === 1'b1) &&
+                    (dut.u_lsu.outstanding_q === 1'b1) &&
+                    (dut.ex_mem_active_candidate.valid === 1'b1) &&
+                    (dut.ex_mem_active_candidate.pc === fault_pc + 32'd4) &&
+                    (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1)
+                ) &&
+                (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
+            ) begin
+                @(posedge clk);
+                #1;
+            end
+            check_condition(
+                (dut.mem_response_wait === 1'b1) &&
+                (dut.u_lsu.outstanding_q === 1'b1) &&
+                (dut.ex_mem_active_candidate.valid === 1'b1) &&
+                (dut.ex_mem_active_candidate.pc === fault_pc + 32'd4) &&
+                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1),
+                "could not align the faulting and younger stores"
+            );
+            check_condition(
+                !trap_valid &&
+                (observed_trap_count == 0),
+                "store access fault trapped before its response"
+            );
+
+            @(posedge clk);
+            #1;
+            check_condition(
+                dut.mem_response_wait &&
+                !trap_valid &&
+                (observed_trap_count == 0),
+                "store access fault did not remain pending for a full cycle"
+            );
+
+            @(negedge clk);
+            dmem_response_enable = 1'b1;
+
+            wait_for_completion();
+            check_condition(
+                u_dmem.read_word(32'h0000_0100) == 32'b0,
+                "younger store modified memory beside the access fault"
+            );
+            check_condition(
+                !dut.u_lsu.outstanding_q,
+                "faulting store transaction did not drain"
+            );
+            check_condition(
+                (dut.u_csr_trap.mepc_q == fault_pc) &&
+                (dut.u_csr_trap.mcause_q ==
+                    EXCEPTION_CAUSE_STORE_ACCESS_FAULT) &&
+                (dut.u_csr_trap.mtval_q == 32'h0000_0400),
+                "store-access-fault trap CSRs are incorrect"
+            );
+
+            end_scenario();
+        end
+    endtask
+
     task automatic scenario_zicsr_rmw_and_hazard;
         begin
             begin_scenario("zicsr_rmw_and_hazard");
@@ -2702,6 +2966,13 @@ module tb_rv32_core;
                 observed_dmem_request_count++;
             end
 
+            if (
+                imem_request_fire &&
+                (imem_req_addr == TRAP_VECTOR)
+            ) begin
+                observed_trap_vector_fetch_count++;
+            end
+
             if (imem_response_fire) begin
                 check_condition(
                     imem_outstanding_count == 1,
@@ -2809,6 +3080,8 @@ module tb_rv32_core;
         total_retire_count = 0;
         total_dmem_request_count = 0;
         total_trap_count = 0;
+        expected_trap_vector_fetch_count = 0;
+        observed_trap_vector_fetch_count = 0;
 
 
         imem_outstanding_count = 0;
@@ -2828,6 +3101,45 @@ module tb_rv32_core;
         scenario_trap_beats_redirect();
         scenario_dmem_fault_trap_wait();
         scenario_trap_redirect_backpressure();
+        run_single_trap_scenario(
+            "instruction_access_fault",
+            encoder_s(
+                FUNCT3_SW,
+                5'd0,
+                5'd30,
+                32'h0000_0100
+            ),
+            EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT,
+            32'h0000_0004,
+            1'b1,
+            32'h0000_0010
+        );
+        run_single_trap_scenario(
+            "breakpoint_trap",
+            INSTRUCTION_EBREAK,
+            EXCEPTION_CAUSE_BREAKPOINT,
+            32'b0,
+            1'b0,
+            32'h0000_0011
+        );
+        scenario_control_address_misaligned();
+        run_single_trap_scenario(
+            "load_address_misaligned",
+            instruction_load(FUNCT3_LW, 5'd1, 5'd0, 32'd2),
+            EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED,
+            32'h0000_0002,
+            1'b0,
+            32'h0000_0012
+        );
+        run_single_trap_scenario(
+            "store_address_misaligned",
+            encoder_s(FUNCT3_SW, 5'd0, 5'd30, 32'd2),
+            EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED,
+            32'h0000_0002,
+            1'b0,
+            32'h0000_0013
+        );
+        scenario_store_access_fault();
         scenario_zicsr_rmw_and_hazard();
         scenario_zicsr_mro_illegal();
         scenario_zicsr_unknown_illegal();

@@ -18,7 +18,7 @@
 - 统一 WB 退休接口；
 - MEM 统一同步异常提交、精确 trap、`mtvec` 重定向与独立 trap 跟踪接口；
 - 六条 Zicsr 指令的主译码、CSR 旧值写回、连续原子访问、late-result hazard、读写抑制和非法访问精确 trap；
-- Icarus 14/14 叶子 TB、Icarus/Verilator core 14/14 场景通过；
+- Icarus 14/14 叶子 TB、Icarus/Verilator core 20/20 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
 `HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前开发状态以本 README 为准；[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)保留的是 v0.1 基线证据，不随之后新增的叶子模块测试计数改写。
@@ -71,7 +71,7 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-[PASS] rv32_core: 14/14 scenarios, 125 retirements, 6 traps, 20 DMem requests, 3157 checks
+[PASS] rv32_core: 20/20 scenarios, 139 retirements, 12 traps, 21 DMem requests, 3918 checks
 [PASS] v0.1 regression completed: 14/14 unit TBs and core TB passed
 ```
 
@@ -111,10 +111,10 @@ waves/          阶段性波形落点
 ## 已知边界
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
-- `ECALL/EBREAK`、非法指令、取指/数据访问错误和地址异常已进入 MEM 统一精确 trap 路径；当前 core directed test 覆盖 illegal、`ECALL` 和 load access fault，其余 cause 的端到端矩阵仍待补齐；
+- `ECALL/EBREAK`、非法指令、取指/数据访问错误和地址异常已进入 MEM 统一精确 trap 路径；cause 0、1、2、3、4、5、6、7、11 均已有 core self-checking directed 场景；
 - 六条 Zicsr 指令已经进入主译码并完成 core 级 RMW、旧值写回、连续访问、紧邻消费者停顿、读写抑制以及 MRO/不存在地址非法访问测试；这只代表当前冻结 CSR profile，不代表完整特权架构；
 - 未实现完整 Machine Mode、`MRET`、interrupt 和 RV32M；
-- v0.1 测试只使用自然对齐访问；
+- v0.1 冻结基线只使用自然对齐访问；当前增量回归已覆盖 load/store 和控制转移的未对齐异常；
 - 当前无 Cache、MMU、Linux、多核和一致性；
 - 未运行完整 ACT4、参考模型差分、VCS、DC、Formality 和 PrimeTime；
 - testbench 中的小程序采用手工编码，`tests/asm/` 尚未形成软件工具链流程。
@@ -124,11 +124,13 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-补齐同步异常 cause 矩阵并冻结 v0.2
+同步异常 directed cause 矩阵（已完成）
+    → ACT4 RV32I runner
+    → 补齐或明确可变延迟与 backpressure 门禁，冻结 v0.2
     → 独立实现 MRET 与 Machine counter，冻结 v0.3
     → 迭代式 RV32M
     → 精确 Machine interrupt
-    → ACT4 + 参考模型差分
+    → 参考模型差分
     → VCS / SpyGlass / DC / Formality / PrimeTime 闭环
 ```
 
@@ -142,6 +144,7 @@ waves/          阶段性波形落点
 - [模块架构](docs/03_module_architecture.md)
 - [验证与 ASIC 计划](docs/04_verification_and_asic_plan.md)
 - [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md)
+- [v0.2 同步异常 Cause 矩阵验证报告](docs/verification/v0.2_sync_trap_cause_matrix_report.md)
 - [Zicsr 与精确同步 trap 集成验证报告](docs/verification/zicsr_precise_trap_integration_report.md)
 - [v0.1 core 验证报告](docs/verification/rv32_core_verification_report.md)
 - [v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)

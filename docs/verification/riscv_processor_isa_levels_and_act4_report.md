@@ -487,17 +487,24 @@ ACT4 的核心思想是：DUT 在 UDB 中声明什么能力，框架就为相应
 当前核最准确的定位是：
 
 ```text
-L0 已完成，正在向 L1 收口
+L0 已完成；L1 的 RTL 与 directed verification 已收口，正在补 ACT4 架构验收
 ```
 
-它已经实现 RV32I 的 37 条普通整数、分支、跳转和访存指令，并完成五级流水 directed verification；但尚缺 `FENCE、ECALL、EBREAK` 的完整架构行为，trap/CSR 闭环也尚未完成。
+它已经实现 RV32I 的 37 条普通整数、分支、跳转和访存指令，`FENCE` 可正常退休，
+`ECALL/EBREAK` 和 cause 0、1、2、3、4、5、6、7、11 已进入统一精确 trap 通路；
+六条 Zicsr 指令及当前 Machine CSR profile 也已完成 core directed verification。同步异常
+cause 矩阵的证据见
+[v0.2 同步异常 Cause 矩阵验证报告](v0.2_sync_trap_cause_matrix_report.md)。
+
+尚未完成的是适用 ACT4、可变延迟与广泛 backpressure 门禁以及 v0.2 正式冻结流程。
+因此当前仍不应把项目表述成“已经通过架构认证的完整 RV32I 核”。
 
 所以目前不应写成“完整 RV32I 核”，更准确的表述是：
 
 ```text
-实现 RV32I 程序子集的 32 位单发射顺序五级流水处理器核；
-具备前递、load-use stall、控制流冲刷和带背压的存储接口；
-正在补齐完整 RV32I 与 ACT4 架构测试闭环。
+实现 RV32I 指令语义、精确同步异常和 Zicsr 基础的 32 位单发射顺序五级流水处理器核；
+具备前递、late-result stall、控制流冲刷和带背压的存储接口；
+directed cause 矩阵已闭环，正在接入 ACT4 RV32I 架构测试。
 ```
 
 ### 11.2 建议的项目主线
