@@ -11,7 +11,7 @@ module tb_rv32_pipeline_ctrl;
     logic ex_request_wait;
     logic ex_multicycle_wait;
     logic raw_redirect_valid;
-    logic load_use_hazard;
+    logic late_result_hazard;
     logic fetch_response_available;
 
     fetch_action_e fetch_action;
@@ -30,7 +30,7 @@ module tb_rv32_pipeline_ctrl;
         .ex_request_wait         (ex_request_wait),
         .ex_multicycle_wait      (ex_multicycle_wait),
         .raw_redirect_valid      (raw_redirect_valid),
-        .load_use_hazard         (load_use_hazard),
+        .late_result_hazard      (late_result_hazard),
         .fetch_response_available(fetch_response_available),
         .fetch_action            (fetch_action),
         .if_id_action            (if_id_action),
@@ -127,7 +127,7 @@ module tb_rv32_pipeline_ctrl;
         );
 
         set_normal_inputs();
-        load_use_hazard = 1'b1;
+        late_result_hazard = 1'b1;
         check_actions(
             FETCH_HOLD,
             PIPE_HOLD,
@@ -135,7 +135,7 @@ module tb_rv32_pipeline_ctrl;
             PIPE_LOAD,
             PIPE_LOAD,
             1'b0,
-            "load-use hazard"
+            "late-result hazard"
         );
 
         set_normal_inputs();
@@ -157,7 +157,7 @@ module tb_rv32_pipeline_ctrl;
         ex_request_wait          = 1'b1;
         ex_multicycle_wait       = 1'b1;
         raw_redirect_valid       = 1'b1;
-        load_use_hazard          = 1'b1;
+        late_result_hazard       = 1'b1;
         fetch_response_available = 1'b0;
         check_actions(
             FETCH_RESET,
@@ -200,7 +200,7 @@ module tb_rv32_pipeline_ctrl;
         set_normal_inputs();
         ex_request_wait    = 1'b1;
         raw_redirect_valid = 1'b1;
-        load_use_hazard    = 1'b1;
+        late_result_hazard = 1'b1;
         check_actions(
             FETCH_HOLD,
             PIPE_HOLD,
@@ -208,12 +208,12 @@ module tb_rv32_pipeline_ctrl;
             PIPE_CLEAR,
             PIPE_LOAD,
             1'b0,
-            "EX wait has priority over redirect and load-use"
+            "EX wait has priority over redirect and late-result"
         );
 
         set_normal_inputs();
         raw_redirect_valid       = 1'b1;
-        load_use_hazard          = 1'b1;
+        late_result_hazard       = 1'b1;
         fetch_response_available = 1'b0;
         check_actions(
             FETCH_REDIRECT,
@@ -222,11 +222,11 @@ module tb_rv32_pipeline_ctrl;
             PIPE_LOAD,
             PIPE_LOAD,
             1'b1,
-            "redirect has priority over load-use and fetch unavailable"
+            "redirect has priority over late-result and fetch unavailable"
         );
 
         set_normal_inputs();
-        load_use_hazard          = 1'b1;
+        late_result_hazard       = 1'b1;
         fetch_response_available = 1'b0;
         check_actions(
             FETCH_HOLD,
@@ -235,7 +235,7 @@ module tb_rv32_pipeline_ctrl;
             PIPE_LOAD,
             PIPE_LOAD,
             1'b0,
-            "load-use has priority over fetch unavailable"
+            "late-result has priority over fetch unavailable"
         );
 
         if (error_count != 0) begin
@@ -258,7 +258,7 @@ module tb_rv32_pipeline_ctrl;
             ex_request_wait          = 1'b0;
             ex_multicycle_wait       = 1'b0;
             raw_redirect_valid       = 1'b0;
-            load_use_hazard          = 1'b0;
+            late_result_hazard       = 1'b0;
             fetch_response_available = 1'b1;
         end
     endtask

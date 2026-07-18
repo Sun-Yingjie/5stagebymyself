@@ -17,12 +17,12 @@ module tb_rv32_forward_unit;
     logic       ex_uses_rs1;
     logic       ex_uses_rs2;
     logic [4:0] ex_rd_addr;
-    logic       ex_memory_read;
+    logic       ex_result_late;
 
     logic       ex_mem_valid;
     logic [4:0] ex_mem_rd_addr;
     logic       ex_mem_register_write;
-    logic       ex_mem_memory_read;
+    logic       ex_mem_result_late;
 
     logic       mem_wb_valid;
     logic [4:0] mem_wb_rd_addr;
@@ -30,7 +30,7 @@ module tb_rv32_forward_unit;
 
     forward_select_e rs1_forward_select;
     forward_select_e rs2_forward_select;
-    logic            load_use_hazard;
+    logic            late_result_hazard;
 
     int unsigned error_count;
 
@@ -47,12 +47,12 @@ module tb_rv32_forward_unit;
         .ex_uses_rs1          (ex_uses_rs1),
         .ex_uses_rs2          (ex_uses_rs2),
         .ex_rd_addr           (ex_rd_addr),
-        .ex_memory_read       (ex_memory_read),
+        .ex_result_late       (ex_result_late),
 
         .ex_mem_valid         (ex_mem_valid),
         .ex_mem_rd_addr       (ex_mem_rd_addr),
         .ex_mem_register_write(ex_mem_register_write),
-        .ex_mem_memory_read   (ex_mem_memory_read),
+        .ex_mem_result_late   (ex_mem_result_late),
 
         .mem_wb_valid         (mem_wb_valid),
         .mem_wb_rd_addr       (mem_wb_rd_addr),
@@ -60,7 +60,7 @@ module tb_rv32_forward_unit;
 
         .rs1_forward_select   (rs1_forward_select),
         .rs2_forward_select   (rs2_forward_select),
-        .load_use_hazard      (load_use_hazard)
+        .late_result_hazard   (late_result_hazard)
     );
 
     initial begin
@@ -84,7 +84,7 @@ module tb_rv32_forward_unit;
         ex_mem_valid          = 1'b1;
         ex_mem_register_write = 1'b1;
         ex_mem_rd_addr        = 5'd5;
-        ex_mem_memory_read    = 1'b0;
+        ex_mem_result_late    = 1'b0;
 
         check_outputs(
             FWD_EX_MEM,
@@ -102,7 +102,7 @@ module tb_rv32_forward_unit;
         ex_mem_valid          = 1'b1;
         ex_mem_register_write = 1'b1;
         ex_mem_rd_addr        = 5'd5;
-        ex_mem_memory_read    = 1'b0;
+        ex_mem_result_late    = 1'b0;
 
         mem_wb_valid          = 1'b1;
         mem_wb_register_write = 1'b1;
@@ -193,52 +193,105 @@ module tb_rv32_forward_unit;
         ex_rs1_addr           = 5'd5;
         ex_mem_valid          = 1'b1;
         ex_mem_register_write = 1'b1;
-        ex_mem_memory_read    = 1'b1;
+        ex_mem_result_late    = 1'b1;
         ex_mem_rd_addr        = 5'd5;
         mem_wb_valid          = 1'b1;
         mem_wb_register_write = 1'b1;
         mem_wb_rd_addr        = 5'd5;
         check_outputs(FWD_REG, FWD_REG, 1'b0,
-                      "EX/MEM load blocks older MEM/WB value");
+                      "EX/MEM late rs1 blocks older MEM/WB value");
+
+        set_defaults();
+        ex_valid              = 1'b1;
+        ex_uses_rs2           = 1'b1;
+        ex_rs2_addr           = 5'd6;
+        ex_mem_valid          = 1'b1;
+        ex_mem_register_write = 1'b1;
+        ex_mem_result_late    = 1'b1;
+        ex_mem_rd_addr        = 5'd6;
+        mem_wb_valid          = 1'b1;
+        mem_wb_register_write = 1'b1;
+        mem_wb_rd_addr        = 5'd6;
+        check_outputs(FWD_REG, FWD_REG, 1'b0,
+                      "EX/MEM late rs2 blocks older MEM/WB value");
+
+        set_defaults();
+        ex_valid              = 1'b1;
+        ex_uses_rs1           = 1'b1;
+        ex_rs1_addr           = 5'd7;
+        ex_mem_valid          = 1'b1;
+        ex_mem_register_write = 1'b1;
+        ex_mem_result_late    = 1'b1;
+        ex_mem_rd_addr        = 5'd6;
+        mem_wb_valid          = 1'b1;
+        mem_wb_register_write = 1'b1;
+        mem_wb_rd_addr        = 5'd7;
+        check_outputs(FWD_MEM_WB, FWD_REG, 1'b0,
+                      "unrelated EX/MEM late result does not block MEM/WB");
+
+        set_defaults();
+        ex_valid              = 1'b1;
+        ex_uses_rs1           = 1'b1;
+        ex_rs1_addr           = 5'd8;
+        ex_mem_result_late    = 1'b1;
+        ex_mem_rd_addr        = 5'd8;
+        mem_wb_valid          = 1'b1;
+        mem_wb_register_write = 1'b1;
+        mem_wb_rd_addr        = 5'd8;
+        check_outputs(FWD_MEM_WB, FWD_REG, 1'b0,
+                      "invalid EX/MEM late result does not block MEM/WB");
+
+        set_defaults();
+        ex_valid              = 1'b1;
+        ex_uses_rs1           = 1'b1;
+        ex_rs1_addr           = 5'd9;
+        ex_mem_valid          = 1'b1;
+        ex_mem_result_late    = 1'b1;
+        ex_mem_rd_addr        = 5'd9;
+        mem_wb_valid          = 1'b1;
+        mem_wb_register_write = 1'b1;
+        mem_wb_rd_addr        = 5'd9;
+        check_outputs(FWD_MEM_WB, FWD_REG, 1'b0,
+                      "non-writing EX/MEM late result does not block MEM/WB");
 
         set_defaults();
         id_valid       = 1'b1;
         id_uses_rs1    = 1'b1;
         id_rs1_addr    = 5'd12;
         ex_valid       = 1'b1;
-        ex_memory_read = 1'b1;
+        ex_result_late = 1'b1;
         ex_rd_addr     = 5'd12;
         check_outputs(FWD_REG, FWD_REG, 1'b1,
-                      "load-use hazard on ID rs1");
+                      "late-result hazard on ID rs1 (load)");
 
         set_defaults();
         id_valid       = 1'b1;
         id_uses_rs2    = 1'b1;
         id_rs2_addr    = 5'd13;
         ex_valid       = 1'b1;
-        ex_memory_read = 1'b1;
+        ex_result_late = 1'b1;
         ex_rd_addr     = 5'd13;
         check_outputs(FWD_REG, FWD_REG, 1'b1,
-                      "load-use hazard on ID rs2");
+                      "late-result hazard on ID rs2");
 
         set_defaults();
         id_valid       = 1'b1;
         id_uses_rs1    = 1'b1;
         id_rs1_addr    = 5'd14;
         ex_valid       = 1'b1;
-        ex_memory_read = 1'b1;
+        ex_result_late = 1'b1;
         ex_rd_addr     = 5'd0;
         check_outputs(FWD_REG, FWD_REG, 1'b0,
-                      "load to x0 causes no hazard");
+                      "late-result rd=x0 causes no hazard");
 
         set_defaults();
         id_valid       = 1'b1;
         id_rs1_addr    = 5'd15;
         ex_valid       = 1'b1;
-        ex_memory_read = 1'b1;
+        ex_result_late = 1'b1;
         ex_rd_addr     = 5'd15;
         check_outputs(FWD_REG, FWD_REG, 1'b0,
-                      "unused ID source causes no hazard");
+                      "CSR immediate field is not an rs1 dependency");
 
         set_defaults();
         id_valid       = 1'b1;
@@ -247,16 +300,16 @@ module tb_rv32_forward_unit;
         ex_valid       = 1'b1;
         ex_rd_addr     = 5'd16;
         check_outputs(FWD_REG, FWD_REG, 1'b0,
-                      "non-load EX producer causes no load-use hazard");
+                      "non-late EX producer causes no hazard");
 
         set_defaults();
         id_valid       = 1'b1;
         id_uses_rs1    = 1'b1;
         id_rs1_addr    = 5'd17;
-        ex_memory_read = 1'b1;
+        ex_result_late = 1'b1;
         ex_rd_addr     = 5'd17;
         check_outputs(FWD_REG, FWD_REG, 1'b0,
-                      "invalid EX load causes no hazard");
+                      "invalid EX late producer causes no hazard");
 
         if (error_count != 0) begin
             $fatal(
@@ -284,12 +337,12 @@ module tb_rv32_forward_unit;
             ex_uses_rs1           = 1'b0;
             ex_uses_rs2           = 1'b0;
             ex_rd_addr            = 5'd0;
-            ex_memory_read        = 1'b0;
+            ex_result_late        = 1'b0;
 
             ex_mem_valid          = 1'b0;
             ex_mem_rd_addr        = 5'd0;
             ex_mem_register_write = 1'b0;
-            ex_mem_memory_read    = 1'b0;
+            ex_mem_result_late    = 1'b0;
 
             mem_wb_valid          = 1'b0;
             mem_wb_rd_addr        = 5'd0;
@@ -300,7 +353,7 @@ module tb_rv32_forward_unit;
     task automatic check_outputs (
         input forward_select_e expected_rs1_select,
         input forward_select_e expected_rs2_select,
-        input logic            expected_load_use_hazard,
+        input logic            expected_late_result_hazard,
         input string           case_name
     );
         begin
@@ -309,7 +362,7 @@ module tb_rv32_forward_unit;
             if (
                 (rs1_forward_select !== expected_rs1_select) ||
                 (rs2_forward_select !== expected_rs2_select) ||
-                (load_use_hazard !== expected_load_use_hazard)
+                (late_result_hazard !== expected_late_result_hazard)
             ) begin
                 error_count++;
 
@@ -320,8 +373,8 @@ module tb_rv32_forward_unit;
                     expected_rs1_select,
                     rs2_forward_select,
                     expected_rs2_select,
-                    load_use_hazard,
-                    expected_load_use_hazard
+                    late_result_hazard,
+                    expected_late_result_hazard
                 );
             end
             else begin

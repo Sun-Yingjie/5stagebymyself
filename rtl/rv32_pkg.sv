@@ -47,6 +47,13 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_FENCE     = 3'b000;
     // jalr
     localparam logic [2:0] FUNCT3_JALR      = 3'b000;
+    // CSR
+    localparam logic [2:0] FUNCT3_CSRRW     = 3'b001;
+    localparam logic [2:0] FUNCT3_CSRRS     = 3'b010;
+    localparam logic [2:0] FUNCT3_CSRRC     = 3'b011;
+    localparam logic [2:0] FUNCT3_CSRRWI    = 3'b101;
+    localparam logic [2:0] FUNCT3_CSRRSI    = 3'b110;
+    localparam logic [2:0] FUNCT3_CSRRCI    = 3'b111;
 // exception
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED = 32'd0;
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
@@ -117,6 +124,34 @@ package rv32_pkg;
         BR_GEU              = 3'b110
     } branch_operation_e;
 
+// CSR control
+    localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
+    localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
+    localparam logic [11:0] CSR_ADDR_MTVEC      = 12'h305;
+    localparam logic [11:0] CSR_ADDR_MSCRATCH   = 12'h340;
+    localparam logic [11:0] CSR_ADDR_MEPC       = 12'h341;
+    localparam logic [11:0] CSR_ADDR_MCAUSE     = 12'h342;
+    localparam logic [11:0] CSR_ADDR_MTVAL      = 12'h343;
+    localparam logic [11:0] CSR_ADDR_MVENDORID  = 12'hF11;
+    localparam logic [11:0] CSR_ADDR_MARCHID    = 12'hF12;
+    localparam logic [11:0] CSR_ADDR_MIMPID     = 12'hF13;
+    localparam logic [11:0] CSR_ADDR_MHARTID    = 12'hF14;
+    localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
+
+    typedef enum logic [1:0] { // select CSR read-modify-write operation
+        CSR_WRITE           = 2'b00,
+        CSR_SET             = 2'b01,
+        CSR_CLEAR           = 2'b10
+    } csr_operation_e;
+
+    typedef struct packed { // decoded Zicsr instruction semantics
+        logic           valid;
+        csr_operation_e operation;
+        logic           use_immediate;
+        logic           read_enable;
+        logic           write_enable;
+    } csr_ctrl_t;
+
     typedef enum logic [1:0] { // sel rs source
         FWD_REG             = 2'b00, // from regfile
         FWD_EX_MEM          = 2'b01, // from ex/mem
@@ -134,7 +169,8 @@ package rv32_pkg;
     typedef enum logic [1:0] {  // sel write back source
         WB_EXEC             = 2'b00,
         WB_LOAD             = 2'b01,
-        WB_PC_PLUS_4        = 2'b10
+        WB_PC_PLUS_4        = 2'b10,
+        WB_CSR              = 2'b11
     } writeback_select_e;
 
 // stage need package
@@ -166,6 +202,7 @@ package rv32_pkg;
         logic            illegal_instruction;
         logic            environment_call;
         logic            breakpoint;
+        csr_ctrl_t       csr_ctrl;
         ex_ctrl_t        ex_ctrl;
         mem_ctrl_t       mem_ctrl;
         wb_ctrl_t        wb_ctrl;
@@ -202,6 +239,9 @@ package rv32_pkg;
 
         logic [31:0] immediate;
 
+        csr_ctrl_t  csr_ctrl;
+        logic [11:0] csr_address;
+
         ex_ctrl_t    ex_ctrl;
         mem_ctrl_t   mem_ctrl;
         wb_ctrl_t    wb_ctrl;
@@ -216,6 +256,9 @@ package rv32_pkg;
 
         logic [31:0] exec_result;
         logic [31:0] store_data;
+        csr_ctrl_t   csr_ctrl;
+        logic [11:0] csr_address;
+        logic [31:0] csr_source;
         logic [4:0]  rd_addr;
 
         mem_ctrl_t   mem_ctrl;
@@ -231,6 +274,7 @@ package rv32_pkg;
 
         logic [31:0] exec_result;
         logic [31:0] load_result;
+        logic [31:0] csr_read_data;
         logic [4:0]  rd_addr;
 
         wb_ctrl_t    wb_ctrl;

@@ -1,5 +1,6 @@
 module rv32_core #(
     parameter logic [31:0] RESET_VECTOR  = 32'h0000_0000,
+    parameter logic [31:0] MTVEC_RESET   = 32'h0000_0000,
     parameter bit          COPROC_ENABLE = 1'b0
 ) (
     input  logic        clk,
@@ -30,6 +31,11 @@ module rv32_core #(
     output logic        retire_rd_we,
     output logic [4:0]  retire_rd_addr,
     output logic [31:0] retire_rd_data,
+
+    output logic        trap_valid,
+    output logic [31:0] trap_pc,
+    output logic [31:0] trap_cause,
+    output logic [31:0] trap_value,
 
     output logic        cp_req_valid,
     input  logic        cp_req_ready,
@@ -67,8 +73,12 @@ module rv32_core #(
     wb_bus_t    wb_bus;
     redirect_t  ex_raw_redirect;
     redirect_t  raw_redirect;
+    redirect_t  trap_redirect;
     redirect_t  qualified_redirect;
-    exception_t mem_exception;
+    exception_t lsu_exception;
+    exception_t final_mem_exception;
+    exception_t lsu_mem_exception_compat;
+    mem_wb_t    lsu_mem_wb_compat;
 
     // Preserve the complete EX candidate while ID/EX is held.
     logic      ex_hold_valid_q;
@@ -85,20 +95,29 @@ module rv32_core #(
     forward_select_e rs2_forward_select;
 
     logic fetch_response_available;
-    logic load_use_hazard;
+    logic late_result_hazard;
+    logic csr_access_valid;
+    logic csr_access_illegal;
+    logic ex_request_block;
     logic ex_request_wait;
+    logic mem_memory_access;
+    logic mem_stage_complete;
     logic mem_response_wait;
+    logic lsu_response_fire;
+    logic trap_take;
     logic redirect_commit;
     logic if_id_ready;
 
     logic [31:0] ex_mem_forward_value;
     logic [31:0] mem_wb_forward_value;
     logic [31:0] wb_write_data;
+    logic [31:0] lsu_load_result;
+    logic [31:0] csr_read_data;
 
     // Flattened control fields keep Icarus port widths unambiguous.
-    logic id_ex_memory_read;
+    logic id_ex_result_late;
     logic ex_mem_register_write;
-    logic ex_mem_memory_read;
+    logic ex_mem_result_late;
     logic mem_wb_register_write;
 
     // Writeback and retirement
@@ -109,6 +128,7 @@ module rv32_core #(
             WB_EXEC:      wb_write_data = mem_wb_q.exec_result;
             WB_LOAD:      wb_write_data = mem_wb_q.load_result;
             WB_PC_PLUS_4: wb_write_data = mem_wb_q.pc_plus_4;
+            WB_CSR:       wb_write_data = mem_wb_q.csr_read_data;
             default:      wb_write_data = '0;
         endcase
     end
@@ -133,9 +153,11 @@ module rv32_core #(
     assign retire_rd_data = wb_bus.rd_data;
 
     // Forwarding datapath
-    assign id_ex_memory_read     = id_ex_q.mem_ctrl.memory_read;
+    assign id_ex_result_late =
+        id_ex_q.mem_ctrl.memory_read || id_ex_q.csr_ctrl.valid;
     assign ex_mem_register_write = ex_mem_q.wb_ctrl.register_write;
-    assign ex_mem_memory_read    = ex_mem_q.mem_ctrl.memory_read;
+    assign ex_mem_result_late =
+        ex_mem_q.mem_ctrl.memory_read || ex_mem_q.csr_ctrl.valid;
     assign mem_wb_register_write = mem_wb_q.wb_ctrl.register_write;
 
     assign mem_wb_forward_value = wb_write_data;
@@ -172,9 +194,15 @@ module rv32_core #(
     // Frontend control
     assign if_id_ready = (if_id_action == PIPE_LOAD);
 
-    assign qualified_redirect.valid =
-        redirect_commit && raw_redirect.valid;
-    assign qualified_redirect.target = raw_redirect.target;
+    always_comb begin
+        qualified_redirect = '0;
+
+        if (trap_take) begin
+            qualified_redirect = trap_redirect;
+        end else if (redirect_commit && raw_redirect.valid) begin
+            qualified_redirect = raw_redirect;
+        end
+    end
 
     // Coprocessor is disabled in v0.1.
     assign cp_req_valid    = 1'b0;
@@ -226,6 +254,7 @@ module rv32_core #(
         .rst              (rst),
         .ex_mem_candidate (ex_mem_active_candidate),
         .ex_mem_q         (ex_mem_q),
+        .ex_request_block (ex_request_block),
         .dmem_req_valid   (dmem_req_valid),
         .dmem_req_ready   (dmem_req_ready),
         .dmem_req_write   (dmem_req_write),
@@ -238,13 +267,96 @@ module rv32_core #(
         .dmem_rsp_error   (dmem_rsp_error),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
-        .mem_wb_candidate (mem_wb_candidate),
-        .mem_exception    (mem_exception)
+        .load_result      (lsu_load_result),
+        .lsu_exception    (lsu_exception),
+        .mem_wb_candidate (lsu_mem_wb_compat),
+        .mem_exception    (lsu_mem_exception_compat)
+    );
+
+    // MEM result ownership and final synchronous exception merge
+    assign mem_memory_access =
+        ex_mem_q.valid &&
+        (
+            ex_mem_q.mem_ctrl.memory_read ||
+            ex_mem_q.mem_ctrl.memory_write
+        );
+
+    assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
+    assign mem_stage_complete = !mem_memory_access || lsu_response_fire;
+
+    assign csr_access_valid =
+        ex_mem_q.valid &&
+        ex_mem_q.csr_ctrl.valid &&
+        !ex_mem_q.exception.valid;
+
+    always_comb begin
+        final_mem_exception = '0;
+
+        if (ex_mem_q.valid) begin
+            if (ex_mem_q.exception.valid) begin
+                final_mem_exception = ex_mem_q.exception;
+            end else if (csr_access_illegal) begin
+                final_mem_exception.valid = 1'b1;
+                final_mem_exception.cause =
+                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
+                final_mem_exception.value = ex_mem_q.instruction;
+            end else if (lsu_exception.valid) begin
+                final_mem_exception = lsu_exception;
+            end
+        end
+    end
+
+    assign ex_request_block =
+        ex_mem_q.valid && final_mem_exception.valid;
+
+    always_comb begin
+        mem_wb_candidate = '0;
+
+        mem_wb_candidate.valid =
+            ex_mem_q.valid &&
+            mem_stage_complete &&
+            !final_mem_exception.valid;
+
+        mem_wb_candidate.pc          = ex_mem_q.pc;
+        mem_wb_candidate.instruction = ex_mem_q.instruction;
+        mem_wb_candidate.pc_plus_4   = ex_mem_q.pc_plus_4;
+        mem_wb_candidate.exec_result = ex_mem_q.exec_result;
+        mem_wb_candidate.load_result = lsu_load_result;
+        mem_wb_candidate.csr_read_data = csr_read_data;
+        mem_wb_candidate.rd_addr     = ex_mem_q.rd_addr;
+        mem_wb_candidate.wb_ctrl     = ex_mem_q.wb_ctrl;
+        mem_wb_candidate.exception   = final_mem_exception;
+    end
+
+    rv32_csr_trap #(
+        .MTVEC_RESET (MTVEC_RESET)
+    ) u_csr_trap (
+        .clk                 (clk),
+        .rst                 (rst),
+        .mem_valid           (ex_mem_q.valid),
+        .mem_pc              (ex_mem_q.pc),
+        .mem_instruction     (ex_mem_q.instruction),
+        .mem_response_wait   (mem_response_wait),
+        .csr_access_valid    (csr_access_valid),
+        .csr_address         (ex_mem_q.csr_address),
+        .csr_operation       (ex_mem_q.csr_ctrl.operation),
+        .csr_source          (ex_mem_q.csr_source),
+        .csr_read_enable     (ex_mem_q.csr_ctrl.read_enable),
+        .csr_write_enable    (ex_mem_q.csr_ctrl.write_enable),
+        .final_mem_exception (final_mem_exception),
+        .csr_read_data       (csr_read_data),
+        .csr_access_illegal  (csr_access_illegal),
+        .trap_take           (trap_take),
+        .trap_redirect       (trap_redirect),
+        .trap_valid          (trap_valid),
+        .trap_pc             (trap_pc),
+        .trap_cause          (trap_cause),
+        .trap_value          (trap_value)
     );
 
     // Hazard detection and global pipeline control
     rv32_forward_unit u_forward_unit (
-        // Current ID-stage consumer for load-use detection
+        // Current ID-stage consumer for late-result detection
         .id_valid              (id_ex_candidate.valid),
         .id_rs1_addr           (id_ex_candidate.rs1_addr),
         .id_rs2_addr           (id_ex_candidate.rs2_addr),
@@ -258,30 +370,30 @@ module rv32_core #(
         .ex_uses_rs1           (id_ex_q.uses_rs1),
         .ex_uses_rs2           (id_ex_q.uses_rs2),
         .ex_rd_addr            (id_ex_q.rd_addr),
-        .ex_memory_read        (id_ex_memory_read),
+        .ex_result_late        (id_ex_result_late),
 
         // MEM- and WB-stage producers
         .ex_mem_valid          (ex_mem_q.valid),
         .ex_mem_rd_addr        (ex_mem_q.rd_addr),
         .ex_mem_register_write (ex_mem_register_write),
-        .ex_mem_memory_read    (ex_mem_memory_read),
+        .ex_mem_result_late    (ex_mem_result_late),
         .mem_wb_valid          (mem_wb_q.valid),
         .mem_wb_rd_addr        (mem_wb_q.rd_addr),
         .mem_wb_register_write (mem_wb_register_write),
 
         .rs1_forward_select    (rs1_forward_select),
         .rs2_forward_select    (rs2_forward_select),
-        .load_use_hazard       (load_use_hazard)
+        .late_result_hazard    (late_result_hazard)
     );
 
     rv32_pipeline_ctrl u_pipeline_ctrl (
         .rst                     (rst),
-        .trap_take               (1'b0),
+        .trap_take               (trap_take),
         .mem_response_wait       (mem_response_wait),
         .ex_request_wait         (ex_request_wait),
         .ex_multicycle_wait      (1'b0),
         .raw_redirect_valid      (raw_redirect.valid),
-        .load_use_hazard         (load_use_hazard),
+        .late_result_hazard      (late_result_hazard),
         .fetch_response_available(fetch_response_available),
         .fetch_action            (fetch_action),
         .if_id_action            (if_id_action),

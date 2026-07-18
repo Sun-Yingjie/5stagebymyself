@@ -285,6 +285,89 @@ module tb_rv32_idu;
 
         check_candidate(expected_candidate, "ADDI negative immediate");
 
+        // Register-form CSR semantics enter ID/EX with a true rs1 use.
+        @(negedge clk);
+
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0380;
+        if_id_q.instruction = make_csr_instruction(
+            CSR_ADDR_MSCRATCH,
+            5'd5,
+            FUNCT3_CSRRW,
+            5'd7
+        );
+        if_id_q.pc_plus_4 = 32'h0000_0384;
+
+        expected_candidate = '0;
+        expected_candidate.valid       = 1'b1;
+        expected_candidate.pc          = 32'h0000_0380;
+        expected_candidate.instruction = if_id_q.instruction;
+        expected_candidate.pc_plus_4   = 32'h0000_0384;
+        expected_candidate.rs1_addr    = 5'd5;
+        expected_candidate.rs2_addr    = 5'd0;
+        expected_candidate.rd_addr     = 5'd7;
+        expected_candidate.rs1_data    = 32'h1234_5678;
+        expected_candidate.rs2_data    = 32'b0;
+        expected_candidate.uses_rs1    = 1'b1;
+        expected_candidate.uses_rs2    = 1'b0;
+        expected_candidate.csr_ctrl.valid = 1'b1;
+        expected_candidate.csr_ctrl.operation = CSR_WRITE;
+        expected_candidate.csr_ctrl.read_enable = 1'b1;
+        expected_candidate.csr_ctrl.write_enable = 1'b1;
+        expected_candidate.csr_address = CSR_ADDR_MSCRATCH;
+        expected_candidate.ex_ctrl.operand_a_select = OPA_ZERO;
+        expected_candidate.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+        expected_candidate.ex_ctrl.alu_operation = ALU_ADD;
+        expected_candidate.ex_ctrl.branch_operation = BR_NONE;
+        expected_candidate.mem_ctrl.memory_size = MEM_SIZE_WORD;
+        expected_candidate.wb_ctrl.register_write = 1'b1;
+        expected_candidate.wb_ctrl.writeback_select = WB_CSR;
+
+        check_candidate(expected_candidate, "CSRRW enters ID/EX");
+
+        // Immediate form does not read rs1; uimm=0 suppresses only CSR write.
+        @(negedge clk);
+
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0390;
+        if_id_q.instruction = make_csr_instruction(
+            CSR_ADDR_MSCRATCH,
+            5'd0,
+            FUNCT3_CSRRSI,
+            5'd8
+        );
+        if_id_q.pc_plus_4 = 32'h0000_0394;
+
+        expected_candidate = '0;
+        expected_candidate.valid       = 1'b1;
+        expected_candidate.pc          = 32'h0000_0390;
+        expected_candidate.instruction = if_id_q.instruction;
+        expected_candidate.pc_plus_4   = 32'h0000_0394;
+        expected_candidate.rs1_addr    = 5'd0;
+        expected_candidate.rs2_addr    = 5'd0;
+        expected_candidate.rd_addr     = 5'd8;
+        expected_candidate.rs1_data    = 32'b0;
+        expected_candidate.rs2_data    = 32'b0;
+        expected_candidate.uses_rs1    = 1'b0;
+        expected_candidate.uses_rs2    = 1'b0;
+        expected_candidate.csr_ctrl.valid = 1'b1;
+        expected_candidate.csr_ctrl.operation = CSR_SET;
+        expected_candidate.csr_ctrl.use_immediate = 1'b1;
+        expected_candidate.csr_ctrl.read_enable = 1'b1;
+        expected_candidate.csr_ctrl.write_enable = 1'b0;
+        expected_candidate.csr_address = CSR_ADDR_MSCRATCH;
+        expected_candidate.ex_ctrl.operand_a_select = OPA_ZERO;
+        expected_candidate.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+        expected_candidate.ex_ctrl.alu_operation = ALU_ADD;
+        expected_candidate.ex_ctrl.branch_operation = BR_NONE;
+        expected_candidate.mem_ctrl.memory_size = MEM_SIZE_WORD;
+        expected_candidate.wb_ctrl.register_write = 1'b1;
+        expected_candidate.wb_ctrl.writeback_select = WB_CSR;
+
+        check_candidate(expected_candidate, "CSRRSI uimm=0 enters ID/EX");
+
         // Stale instruction bits in an invalid IF/ID entry are not an exception.
         if_id_q             = '0;
         if_id_q.instruction = 32'hffff_ffff;
@@ -435,6 +518,23 @@ module tb_rv32_idu;
                 funct3,
                 rd,
                 opcode
+            };
+        end
+    endfunction
+
+    function automatic logic [31:0] make_csr_instruction (
+        input logic [11:0] csr_address,
+        input logic [4:0]  source_field,
+        input logic [2:0]  funct3,
+        input logic [4:0]  rd
+    );
+        begin
+            make_csr_instruction = {
+                csr_address,
+                source_field,
+                funct3,
+                rd,
+                OPCODE_SYSTEM
             };
         end
     endfunction

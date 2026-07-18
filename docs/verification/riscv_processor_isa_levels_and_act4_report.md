@@ -961,7 +961,7 @@ TB 的 `$readmemh` 存储模型不能直接作为 ASIC SRAM。综合边界应把
 | G. 差分 | 随机程序、退休流、异常和 CSR 对比 | 约定回归规模下无 mismatch |
 | H. ASIC 闭环 | lint、综合、STA、必要的形式等价 | 报告可复现、时序约束无遗漏 |
 
-这个顺序与项目已有版本规划基本一致：v0.2 收口 trap/CSR，v0.3 引入中断和 RV32M，之后再做官方 ISA 回归、差分和 ASIC 前端闭环。
+这个顺序与项目版本规划一致：v0.2 收口完整 RV32I 与精确同步异常，v0.3 完成 Zicsr 与最小 Machine Mode，v0.4 加入 RV32M，v0.5 再加入精确 Machine interrupt，之后完成官方 ISA 回归、差分和 ASIC 前端闭环。
 
 ### 12.11 最终完成标准
 

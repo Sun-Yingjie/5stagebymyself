@@ -34,6 +34,9 @@ module tb_rv32_exu;
         test_basic_add();
         test_mixed_forwarding();
         test_reverse_forwarding();
+        test_csr_register_source_forwarding();
+        test_csr_immediate_source();
+        test_exception_clears_csr_control();
         test_pc_immediate_operands();
         test_zero_immediate_operands();
         test_store_address_and_data_forwarding();
@@ -106,10 +109,104 @@ module tb_rv32_exu;
             expected_candidate.pc_plus_4   = id_ex_q.pc_plus_4;
             expected_candidate.exec_result = expected_exec_result;
             expected_candidate.store_data  = expected_store_data;
+            expected_candidate.csr_ctrl     = id_ex_q.csr_ctrl;
+            expected_candidate.csr_address  = id_ex_q.csr_address;
             expected_candidate.rd_addr     = id_ex_q.rd_addr;
             expected_candidate.mem_ctrl    = id_ex_q.mem_ctrl;
             expected_candidate.wb_ctrl     = id_ex_q.wb_ctrl;
             expected_candidate.exception   = id_ex_q.exception;
+        end
+    endtask
+
+    task automatic test_csr_register_source_forwarding;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0130,
+                {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
+                5'd1
+            );
+            id_ex_q.rs1_data = 32'h1111_1111;
+            id_ex_q.csr_ctrl.valid = 1'b1;
+            id_ex_q.csr_ctrl.operation = CSR_WRITE;
+            id_ex_q.csr_ctrl.read_enable = 1'b1;
+            id_ex_q.csr_ctrl.write_enable = 1'b1;
+            id_ex_q.csr_address = 12'h300;
+
+            build_expected_candidate(32'h1111_1111, 32'b0);
+            expected_candidate.csr_source = 32'h1111_1111;
+            check_outputs(1'b0, 32'b0, "CSR source uses register value");
+
+            rs1_forward_select = FWD_EX_MEM;
+            ex_mem_forward_value = 32'h2222_2222;
+            build_expected_candidate(32'h2222_2222, 32'b0);
+            expected_candidate.csr_source = 32'h2222_2222;
+            check_outputs(1'b0, 32'b0, "CSR source uses EX/MEM forwarding");
+
+            rs1_forward_select = FWD_MEM_WB;
+            mem_wb_forward_value = 32'h3333_3333;
+            build_expected_candidate(32'h3333_3333, 32'b0);
+            expected_candidate.csr_source = 32'h3333_3333;
+            check_outputs(1'b0, 32'b0, "CSR source uses MEM/WB forwarding");
+        end
+    endtask
+
+    task automatic test_csr_immediate_source;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0140,
+                {12'h305, 5'd31, FUNCT3_CSRRWI, 5'd2, OPCODE_SYSTEM},
+                5'd2
+            );
+            id_ex_q.rs1_data = 32'hffff_ffff;
+            id_ex_q.csr_ctrl.valid = 1'b1;
+            id_ex_q.csr_ctrl.operation = CSR_WRITE;
+            id_ex_q.csr_ctrl.use_immediate = 1'b1;
+            id_ex_q.csr_ctrl.read_enable = 1'b1;
+            id_ex_q.csr_ctrl.write_enable = 1'b1;
+            id_ex_q.csr_address = 12'h305;
+            rs1_forward_select = FWD_EX_MEM;
+            ex_mem_forward_value = 32'haaaa_aaaa;
+
+            build_expected_candidate(32'haaaa_aaaa, 32'b0);
+            expected_candidate.csr_source = 32'd31;
+            check_outputs(
+                1'b0,
+                32'b0,
+                "CSR immediate source is zero-extended and ignores forwarding"
+            );
+        end
+    endtask
+
+    task automatic test_exception_clears_csr_control;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0150,
+                {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
+                5'd1
+            );
+            id_ex_q.rs1_data = 32'hdead_beef;
+            id_ex_q.csr_ctrl.valid = 1'b1;
+            id_ex_q.csr_ctrl.operation = CSR_WRITE;
+            id_ex_q.csr_ctrl.read_enable = 1'b1;
+            id_ex_q.csr_ctrl.write_enable = 1'b1;
+            id_ex_q.csr_address = 12'h300;
+            id_ex_q.exception.valid = 1'b1;
+            id_ex_q.exception.cause = EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
+            id_ex_q.exception.value = id_ex_q.instruction;
+
+            build_expected_candidate(32'hdead_beef, 32'b0);
+            expected_candidate.csr_ctrl = '0;
+            expected_candidate.csr_source = 32'b0;
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            check_outputs(
+                1'b0,
+                32'b0,
+                "incoming exception suppresses CSR side effects"
+            );
         end
     endtask
 

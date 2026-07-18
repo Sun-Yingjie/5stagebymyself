@@ -42,6 +42,7 @@ module tb_rv32_decoder;
 
         test_fence();
         test_system_exceptions();
+        test_zicsr();
 
         test_op_imm(FUNCT3_ADD_SUB, FUNCT7_BASE,    ALU_ADD,  "ADDI");
         test_op_imm(FUNCT3_SLL,     FUNCT7_BASE,    ALU_SLL,  "SLLI");
@@ -196,9 +197,88 @@ module tb_rv32_decoder;
                 "MRET remains illegal before Machine Mode"
             );
             check_decode(
-                32'h3000_1073,
+                make_instruction(OPCODE_SYSTEM, 3'b100, FUNCT7_BASE),
                 expected_ctrl,
-                "CSR instruction remains illegal before Zicsr"
+                "reserved SYSTEM funct3 remains illegal"
+            );
+        end
+    endtask
+
+    task automatic test_zicsr;
+        begin
+            test_zicsr_instruction(
+                FUNCT3_CSRRW,
+                CSR_WRITE,
+                1'b0,
+                1'b1,
+                "CSRRW"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRS,
+                CSR_SET,
+                1'b0,
+                1'b1,
+                "CSRRS"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRC,
+                CSR_CLEAR,
+                1'b0,
+                1'b1,
+                "CSRRC"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRWI,
+                CSR_WRITE,
+                1'b1,
+                1'b0,
+                "CSRRWI"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRSI,
+                CSR_SET,
+                1'b1,
+                1'b0,
+                "CSRRSI"
+            );
+            test_zicsr_instruction(
+                FUNCT3_CSRRCI,
+                CSR_CLEAR,
+                1'b1,
+                1'b0,
+                "CSRRCI"
+            );
+        end
+    endtask
+
+    task automatic test_zicsr_instruction (
+        input logic [2:0]     funct3,
+        input csr_operation_e operation,
+        input logic           use_immediate,
+        input logic           uses_rs1,
+        input string          case_name
+    );
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.uses_rs1 = uses_rs1;
+
+            expected_ctrl.csr_ctrl.valid = 1'b1;
+            expected_ctrl.csr_ctrl.operation = operation;
+            expected_ctrl.csr_ctrl.use_immediate = use_immediate;
+            expected_ctrl.csr_ctrl.read_enable = 1'b1;
+            expected_ctrl.csr_ctrl.write_enable = 1'b1;
+
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+            expected_ctrl.wb_ctrl.register_write = 1'b1;
+            expected_ctrl.wb_ctrl.writeback_select = WB_CSR;
+
+            check_decode(
+                make_csr_instruction(funct3),
+                expected_ctrl,
+                case_name
             );
         end
     endtask
@@ -351,6 +431,20 @@ module tb_rv32_decoder;
             value[31:25] = funct7;
 
             make_instruction = value;
+        end
+    endfunction
+
+    function automatic logic [31:0] make_csr_instruction (
+        input logic [2:0] funct3
+    );
+        begin
+            make_csr_instruction = {
+                12'h300,
+                5'd1,
+                funct3,
+                5'd2,
+                OPCODE_SYSTEM
+            };
         end
     endfunction
 

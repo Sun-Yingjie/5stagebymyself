@@ -67,12 +67,28 @@ run_icarus_test() {
     echo "[PASS] ${top}: ${summary:-simulation exited successfully}"
 }
 
-UNIT_NAMES="alu branch_compare decoder exu forward_unit idu ifu imm_gen lsu pipeline_ctrl regfile"
+UNIT_NAMES=(
+    alu
+    branch_compare
+    csr_alu
+    csr_trap
+    csr_decoder
+    decoder
+    exu
+    forward_unit
+    idu
+    ifu
+    imm_gen
+    lsu
+    pipeline_ctrl
+    regfile
+)
 unit_count=0
+unit_total="${#UNIT_NAMES[@]}"
 
 echo
 echo "[INFO] Running Icarus unit regressions"
-for name in ${UNIT_NAMES}; do
+for name in "${UNIT_NAMES[@]}"; do
     run_icarus_test "tb_rv32_${name}" "tb/unit/tb_rv32_${name}.sv"
     unit_count=$((unit_count + 1))
 done
@@ -127,5 +143,5 @@ if [[ "${RUN_VERILATOR}" -eq 1 ]]; then
 fi
 
 echo
-echo "[PASS] v0.1 regression completed: ${unit_count}/11 unit TBs and core TB passed"
+echo "[PASS] v0.1 regression completed: ${unit_count}/${unit_total} unit TBs and core TB passed"
 echo "[INFO] Logs retained under ${BUILD_ROOT}"

@@ -4,23 +4,28 @@
 
 ## 当前状态
 
-当前冻结版本为 `v0.1-rtl-baseline`，它表示**功能 RTL 基线**，不表示完整 RV32I 认证或 ASIC signoff 完成。
+当前冻结版本仍为 `v0.1-rtl-baseline`，它表示**功能 RTL 基线**，不表示完整 RV32I 认证或 ASIC signoff 完成。当前实现已在该基线上叠加精确同步 trap 与 Zicsr/CSR 状态基础，但尚未发布新的冻结版本，也不改写 v0.1 的历史验收记录。
 
-- 37 条 RV32I 程序子集；
+- 37 条原有整数指令和可正常退休的 `FENCE`；
+- `ECALL/EBREAK`、非法指令与地址异常元数据；
 - EX/MEM、MEM/WB 前递；
 - WB→ID 同周期旁路；
-- load-use bubble；
+- load/CSR 共用的 late-result bubble；
 - EX 阶段 branch/JAL/JALR redirect；
 - 独立指令/数据 valid-ready 接口；
 - 每通道最多一笔在途事务；
 - 有限 backpressure 与在途事务复位；
 - 统一 WB 退休接口；
-- Icarus 11/11 叶子 TB、Icarus/Verilator core 7/7 场景通过；
+- MEM 统一同步异常提交、精确 trap、`mtvec` 重定向与独立 trap 跟踪接口；
+- 六条 Zicsr 指令的主译码、CSR 旧值写回、连续原子访问、late-result hazard、读写抑制和非法访问精确 trap；
+- Icarus 14/14 叶子 TB、Icarus/Verilator core 14/14 场景通过；
 - SpyGlass `lint/lint_rtl` baseline 已建立。
 
-`HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前项目状态以本 README、[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)为准。
+`HANDOFF.md` 是 2026-07-16 的历史交接快照，其中记录的实现停点已经过期。当前开发状态以本 README 为准；[v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)和[core 验证报告](docs/verification/rv32_core_verification_report.md)保留的是 v0.1 基线证据，不随之后新增的叶子模块测试计数改写。
 
-## v0.1 指令范围
+## 指令范围
+
+### 冻结的 v0.1 基线
 
 | 类别 | 指令 |
 |---|---|
@@ -31,6 +36,17 @@
 | 跳转 | `JAL JALR` |
 | Load | `LB LH LW LBU LHU` |
 | Store | `SB SH SW` |
+
+### 当前已实现增量
+
+| 类别 | 指令或行为 |
+|---|---|
+| 顺序与环境 | `FENCE` 正常退休；`ECALL/EBREAK` 产生精确同步 trap |
+| Zicsr | `CSRRW CSRRS CSRRC CSRRWI CSRRSI CSRRCI` |
+
+Zicsr 的具体可访问 CSR 集合不是由六条指令本身决定，而以 [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md) 为准。
+
+这些能力分别构成 v0.2 精确同步异常和 v0.3 Zicsr/最小 Machine Mode 的实现基础；在各自完成标准满足并建立冻结记录前，不把当前开发状态称为对应版本发布。
 
 ## 快速回归
 
@@ -55,10 +71,8 @@ scripts/run_v0_1_regression.sh --icarus-only
 脚本在系统临时目录中完成编译，不向仓库写入仿真产物。成功结果应包含：
 
 ```text
-11/11 unit TBs passed
-Icarus core: 7/7 scenarios passed
-Verilator core: 7/7 scenarios passed
-98 retirements, 18 DMem requests, 1715 checks
+[PASS] rv32_core: 14/14 scenarios, 125 retirements, 6 traps, 20 DMem requests, 3157 checks
+[PASS] v0.1 regression completed: 14/14 unit TBs and core TB passed
 ```
 
 如需保留到指定位置，可以设置：
@@ -97,8 +111,9 @@ waves/          阶段性波形落点
 ## 已知边界
 
 - 37 条原有整数指令之外，已加入可正常退休的 `FENCE`，但尚未完成整套 RV32I 架构验收；
-- `ECALL、EBREAK` 已在 ID 生成异常元数据，非法指令、访问错误和非对齐访问也能沿流水传播，但尚未形成精确 trap 提交与重定向闭环；
-- 未实现 Zicsr、Machine Mode、interrupt 和 RV32M；
+- `ECALL/EBREAK`、非法指令、取指/数据访问错误和地址异常已进入 MEM 统一精确 trap 路径；当前 core directed test 覆盖 illegal、`ECALL` 和 load access fault，其余 cause 的端到端矩阵仍待补齐；
+- 六条 Zicsr 指令已经进入主译码并完成 core 级 RMW、旧值写回、连续访问、紧邻消费者停顿、读写抑制以及 MRO/不存在地址非法访问测试；这只代表当前冻结 CSR profile，不代表完整特权架构；
+- 未实现完整 Machine Mode、`MRET`、interrupt 和 RV32M；
 - v0.1 测试只使用自然对齐访问；
 - 当前无 Cache、MMU、Linux、多核和一致性；
 - 未运行完整 ACT4、参考模型差分、VCS、DC、Formality 和 PrimeTime；
@@ -109,9 +124,8 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-RV32I 剩余编码与同步异常来源
-    → Zicsr
-    → machine-mode-only 精确 trap 闭环
+补齐同步异常 cause 矩阵并冻结 v0.2
+    → 独立实现 MRET 与 Machine counter，冻结 v0.3
     → 迭代式 RV32M
     → 精确 Machine interrupt
     → ACT4 + 参考模型差分
@@ -127,6 +141,8 @@ RV32I 剩余编码与同步异常来源
 - [流水线契约](docs/02_pipeline_contract.md)
 - [模块架构](docs/03_module_architecture.md)
 - [验证与 ASIC 计划](docs/04_verification_and_asic_plan.md)
+- [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md)
+- [Zicsr 与精确同步 trap 集成验证报告](docs/verification/zicsr_precise_trap_integration_report.md)
 - [v0.1 core 验证报告](docs/verification/rv32_core_verification_report.md)
 - [v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)
 - [SpyGlass baseline](docs/asic/spyglass_lint_rtl_baseline.md)
