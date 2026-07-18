@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  v0_1_regression:
-    name: v0.1 Icarus and Verilator regression
+  rtl_regression:
+    name: Icarus and Verilator regression
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -34,5 +34,5 @@ jobs:
           iverilog -V 2>&1 | head -n 1
           verilator --version
 
-      - name: Run frozen v0.1 regression
-        run: scripts/run_v0_1_regression.sh
+      - name: Run RTL regression
+        run: scripts/run_regression.sh
