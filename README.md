@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-当前冻结版本仍为 `v0.1-rtl-baseline`，它表示**功能 RTL 基线**，不表示完整 RV32I 认证或 ASIC signoff 完成。当前开发分支在该基线上叠加 v0.2 同步 trap 与 Zicsr 增量，不改写 v0.1 的历史验收记录。
+当前冻结版本仍为 `v0.1-rtl-baseline`，它表示**功能 RTL 基线**，不表示完整 RV32I 认证或 ASIC signoff 完成。当前实现已在该基线上叠加精确同步 trap 与 Zicsr/CSR 状态基础，但尚未发布新的冻结版本，也不改写 v0.1 的历史验收记录。
 
 - 37 条原有整数指令和可正常退休的 `FENCE`；
 - `ECALL/EBREAK`、非法指令与地址异常元数据；
@@ -37,7 +37,7 @@
 | Load | `LB LH LW LBU LHU` |
 | Store | `SB SH SW` |
 
-### 当前 v0.2 增量
+### 当前已实现增量
 
 | 类别 | 指令或行为 |
 |---|---|
@@ -45,6 +45,8 @@
 | Zicsr | `CSRRW CSRRS CSRRC CSRRWI CSRRSI CSRRCI` |
 
 Zicsr 的具体可访问 CSR 集合不是由六条指令本身决定，而以 [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md) 为准。
+
+这些能力分别构成 v0.2 精确同步异常和 v0.3 Zicsr/最小 Machine Mode 的实现基础；在各自完成标准满足并建立冻结记录前，不把当前开发状态称为对应版本发布。
 
 ## 快速回归
 
@@ -122,7 +124,8 @@ waves/          阶段性波形落点
 处理器核后续目标是：
 
 ```text
-补齐同步异常 cause 矩阵并实现 MRET
+补齐同步异常 cause 矩阵并冻结 v0.2
+    → 独立实现 MRET 与 Machine counter，冻结 v0.3
     → 迭代式 RV32M
     → 精确 Machine interrupt
     → ACT4 + 参考模型差分
@@ -139,6 +142,7 @@ waves/          阶段性波形落点
 - [模块架构](docs/03_module_architecture.md)
 - [验证与 ASIC 计划](docs/04_verification_and_asic_plan.md)
 - [Machine CSR Profile 与状态所有者契约](docs/06_machine_csr_contract.md)
+- [Zicsr 与精确同步 trap 集成验证报告](docs/verification/zicsr_precise_trap_integration_report.md)
 - [v0.1 core 验证报告](docs/verification/rv32_core_verification_report.md)
 - [v0.1 冻结记录](docs/verification/v0.1_freeze_record.md)
 - [SpyGlass baseline](docs/asic/spyglass_lint_rtl_baseline.md)

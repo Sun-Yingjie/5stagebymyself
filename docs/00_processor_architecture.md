@@ -65,10 +65,11 @@ v0.1 的测试程序只使用自然对齐的取指和数据访问。非对齐访
 
 | 阶段 | 新增能力 |
 |---|---|
-| v0.2 | 可变存储器延迟、非法指令和非对齐访问处理、Machine Mode 基本 CSR、精确异常 |
-| v0.3 | 中断、迭代式 RV32M 乘除法单元、多周期流水暂停 |
-| v0.4 | SRAM/AXI 适配器、ISA 回归和更完整的差分验证 |
-| v1.0 | SpyGlass、VCS、DC、Formality、PT 和门级仿真的可重复闭环 |
+| v0.2 | 完整 RV32I 编码边界、可变存储器延迟和精确同步异常 |
+| v0.3 | Zicsr、`MRET`、Machine counter 与最小 Machine Mode |
+| v0.4 | 迭代式 RV32M 乘除法单元和多周期流水暂停 |
+| v0.5 | 精确 Machine interrupt |
+| v1.0 | ACT4、参考模型差分以及 SpyGlass、VCS、DC、Formality、PT 和门级仿真的可重复闭环 |
 | 后续扩展 | 阻塞式协处理器命令接口、NPU、Cache 和性能优化 |
 
 版本号表示研发里程碑，不表示对外发布的软件版本。
@@ -90,7 +91,7 @@ v0.2 先建立可验证的同步异常闭环，再叠加中断。该阶段冻结
 
 `FENCE.I` 属于独立的 Zifencei 扩展，不包含在本阶段。后续若增加 Cache、store buffer、多笔在途事务或允许数据通路修改指令存储器，必须重新评估 `FENCE`/`FENCE.I` 的实现，不能继续无条件沿用 no-op。
 
-### 4.2 Zicsr 增量边界
+### 4.2 v0.3 Zicsr 与最小 Machine Mode 边界
 
 Zicsr 增加 `CSRRW/CSRRS/CSRRC/CSRRWI/CSRRSI/CSRRCI` 六条原子 CSR 读改写指令。该扩展定义访问机制，但不单独规定必须存在的具体 CSR；本项目可访问的 Machine CSR 地址、字段和合法化规则由最小 Machine Mode 增量冻结。
 
@@ -103,11 +104,12 @@ Zicsr 增加 `CSRRW/CSRRS/CSRRC/CSRRWI/CSRRSI/CSRRCI` 六条原子 CSR 读改写
 - 不存在、权限不足或对只读 CSR 发起真实写操作时，产生 illegal-instruction 异常且不产生 CSR/通用寄存器副作用；
 - 本增量不声明 Zicntr、Zihpm 或任何尚未实现的 CSR 集合。
 
-本项目 v0.2 实际存在的 CSR 地址、reset、WARL/MRO 规则、trap 自动更新和分阶段
+本项目当前实际存在的 CSR 地址、reset、WARL/MRO 规则、trap 自动更新和分阶段
 延期范围，以 [Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 为准。
 状态所有者、最终异常合并和六条指令的端到端验证已经完成；主 decoder 只对
 `rv32_csr_decoder` 明确认可的六种 Zicsr 编码清除 illegal，具体 CSR 地址合法性仍在
-MEM 由唯一状态所有者判定。
+MEM 由唯一状态所有者判定。当前实现只是 v0.3 的基础；补齐 `MRET`、Machine counter
+和对应架构测试后，才能冻结最小 Machine Mode 里程碑。
 
 ## 5. 当前明确不做的内容
 

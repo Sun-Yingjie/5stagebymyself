@@ -1,6 +1,6 @@
 # RTL 实现顺序与文件组织
 
-> 当前阶段：开始手写 RTL。本文只规定实现顺序和工程组织，不替代上位架构规格。
+> 当前阶段：核心 RTL 已连通；本文维护依赖顺序和工程组织，不替代上位架构规格。
 
 ## 1. 目录结构
 
@@ -26,19 +26,22 @@
 01  rv32_pkg.sv
 02  rv32_imm_gen.sv
 03  rv32_alu.sv
-04  rv32_branch_compare.sv
-05  rv32_decoder.sv
-06  rv32_regfile.sv
-07  rv32_forward_unit.sv
-08  rv32_pipeline_ctrl.sv
-09  rv32_idu.sv
-10  rv32_exu.sv
-11  rv32_ifu.sv
-12  rv32_lsu.sv
-13  rv32_core.sv
+04  rv32_csr_alu.sv
+05  rv32_csr_trap.sv
+06  rv32_csr_decoder.sv
+07  rv32_branch_compare.sv
+08  rv32_decoder.sv
+09  rv32_regfile.sv
+10  rv32_forward_unit.sv
+11  rv32_pipeline_ctrl.sv
+12  rv32_idu.sv
+13  rv32_exu.sv
+14  rv32_ifu.sv
+15  rv32_lsu.sv
+16  rv32_core.sv
 ```
 
-顺序依据是依赖关系和可验证性，不代表最终流水级的重要程度。公共包先完成；纯组合叶子模块先于带状态模块；最后才连接完整核心。
+顺序依据是依赖关系和可验证性，不代表最终流水级的重要程度。公共包先完成；被实例化模块必须位于使用者之前，例如 `rv32_csr_alu` 先于 `rv32_csr_trap`、`rv32_csr_decoder` 先于 `rv32_decoder`；最后才连接完整核心。可综合编译的事实源是 `filelists/rv32_core_rtl.f`，本文与其保持一致。
 
 ## 3. 每个模块的完成循环
 

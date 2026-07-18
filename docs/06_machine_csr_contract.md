@@ -1,4 +1,4 @@
-# v0.2 Machine CSR Profile 与状态所有者契约
+# v0.3 Machine CSR Profile 与状态所有者契约
 
 > 状态：冻结契约；`rv32_csr_trap` 已完成独立单测并接入 core，六条 Zicsr 指令已进入主译码与端到端验收。<br>
 > 适用范围：RV32、`IALIGN=32`、单 hart、仅 M-mode。<br>
@@ -68,7 +68,7 @@ Zicsr 指令切换为合法；保留的 SYSTEM 编码仍为 illegal。
 - `mstatush` 及扩展专用 Machine CSR：当前 profile 不实现相关扩展；
 - PMP、环境配置、Debug、NMI 和自定义 CSR。
 
-这表示当前只声明“项目 v0.2 CSR profile”，不声称已经完成全部 Machine-Level ISA。
+这表示当前只声明“项目 v0.3 CSR profile 基础”，不声称已经完成全部 Machine-Level ISA。
 在对外声称最小 Machine Mode 和执行对应 ACT4 配置前，必须补齐 `MRET`、Machine
 counter 以及最终选定测试 profile 所要求的 CSR。
 

@@ -1,7 +1,7 @@
 # 模块划分与顶层集成架构
 
 > 上位规格：`00_processor_architecture.md`、`01_core_system_context.md`、`02_pipeline_contract.md`  
-> 当前阶段：v0.1 模块边界已冻结；v0.2 同步 trap/CSR owner 已接入 core，Zicsr 有效译码由主 decoder 组合语义叶子后统一产生。
+> 当前阶段：v0.1 模块边界已冻结；同步 trap/CSR owner 已接入 core，Zicsr 有效译码由主 decoder 组合语义叶子后统一产生。
 
 ## 1. 模块划分原则
 
@@ -127,7 +127,7 @@ uses_rs1
 
 ### 3.8 `rv32_csr_trap`
 
-v0.2 加入，拥有 `mstatus`、`misa`、`mtvec`、`mscratch`、`mepc`、`mcause`、`mtval` 和只读 identity CSR。精确地址、reset、字段掩码和 WARL/MRO 行为由 [Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 冻结。它接收 MEM 中的 CSR 语义访问和已经合并完成的最老异常，完成访问检查、CSR 状态更新，并产生：
+精确异常与 Zicsr 增量加入，拥有 `mstatus`、`misa`、`mtvec`、`mscratch`、`mepc`、`mcause`、`mtval` 和只读 identity CSR。精确地址、reset、字段掩码和 WARL/MRO 行为由 [Machine CSR Profile 与状态所有者契约](06_machine_csr_contract.md) 冻结。它接收 MEM 中的 CSR 语义访问和已经合并完成的最老异常，完成访问检查、CSR 状态更新，并产生：
 
 - 只持续一个周期的 `trap_take`；
 - 指向 trap handler 的 `trap_redirect`；
@@ -145,7 +145,7 @@ CSR_SET:   csr_read_data | source
 CSR_CLEAR: csr_read_data & ~source
 ```
 
-该模块不拥有 CSR 状态，不判断地址是否存在或只读，也不决定当前指令是否真正读写。读写使能、访问合法性和提交资格由 decoder 与 CSR 状态所有者分别负责。当前先把它作为独立叶子验证；`rv32_csr_trap` 加入后由状态所有者内部实例化。
+该模块不拥有 CSR 状态，不判断地址是否存在或只读，也不决定当前指令是否真正读写。读写使能、访问合法性和提交资格由 decoder 与 CSR 状态所有者分别负责。它已经完成独立叶子验证，并由 `rv32_csr_trap` 在唯一状态所有者内部实例化。
 
 ## 4. 状态所有权
 
@@ -155,7 +155,7 @@ CSR_CLEAR: csr_read_data & ~source
 | `x0～x31` 通用寄存器 | `rv32_regfile` |
 | IF/ID、ID/EX、EX/MEM、MEM/WB | `rv32_core` |
 | 数据请求已发送、等待响应 | `rv32_lsu` |
-| CSR 和 trap 状态 | `rv32_csr_trap`，v0.2 |
+| CSR 和 trap 状态 | `rv32_csr_trap`，精确异常/Zicsr 增量 |
 | 流水动作选择 | 纯组合 `rv32_pipeline_ctrl`，不拥有状态 |
 
 任何架构状态不能被两个模块同时保存或驱动。流水寄存器中保存的是指令经过该边界所需的快照，不视为对子模块内部状态的复制。
@@ -226,7 +226,7 @@ v0.1 暂不在可综合 RTL 中使用 `interface/modport`、class、动态数组
 | `operand_b_select_e` | `OPB_RS2 / OPB_IMMEDIATE` |
 | `branch_operation_e` | `BR_NONE / BR_EQ / BR_NE / BR_LT / BR_GE / BR_LTU / BR_GEU` |
 | `memory_size_e` | `MEM_SIZE_BYTE / MEM_SIZE_HALF / MEM_SIZE_WORD` |
-| `writeback_select_e` | `WB_EXEC / WB_LOAD / WB_PC_PLUS_4 / WB_CSR`（Zicsr 流水接入时加入） |
+| `writeback_select_e` | `WB_EXEC / WB_LOAD / WB_PC_PLUS_4 / WB_CSR` |
 | `csr_operation_e` | `CSR_WRITE / CSR_SET / CSR_CLEAR` |
 | `forward_select_e` | `FWD_REG / FWD_EX_MEM / FWD_MEM_WB` |
 

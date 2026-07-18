@@ -201,9 +201,11 @@ retire_rd_data
 - CSRRW[I] 在 `rd=x0` 时不读但仍写，写入零也不能被错误抑制；
 - CSRRS/CSRRC 在编码 `rs1=x0` 时只读不写，`rs1!=x0` 但运行值为零时仍保持写使能；
 - CSRRSI/CSRRCI 在 `uimm=0` 时只读不写，非零立即数正确零扩展；
-- 合法只读访问、对只读 CSR 的真实写、不存在地址和权限错误分别得到正确结果；非法访问必须检查 `trap_pc`、cause 2、值为完整指令字的 `trap_value`，以及早期异常优先级；
+- 合法只读访问、对只读 CSR 的真实写和不存在地址分别得到正确结果；非法访问必须检查 `trap_pc`、cause 2、值为完整指令字的 `trap_value`，以及早期异常优先级；当前固定 M-mode 不产生权限错误，加入低特权级后再启用对应测试；
 - CSR→消费者的一拍 late-result stall、MEM/WB 前递和连续 CSR 原子顺序；
 - 被冲刷或已有异常的 CSR 指令不形成真实 CSR 读写访问；访问非法的 CSR 指令不产生读写副作用、不写 `rd`、不普通退休。
+
+当前集成结果与复现证据见 [Zicsr 与精确同步 trap 集成验证报告](verification/zicsr_precise_trap_integration_report.md)。
 
 ## 4. 断言计划
 
@@ -477,12 +479,13 @@ v0.1 五级流水 RTL 已经连通，后续不把多项 ISA、异常和多周期
 3. 先加入无状态 CSR 读改写运算叶子及其单元测试；
 4. 独立加入 Zicsr 语义译码叶子并穷举六条指令与读写抑制规则，主 decoder 暂不把 CSR 合法化；
 5. 再把语义译码接入逐级承载字段、late-result hazard 与写回数据通路；
-6. 冻结项目 v0.2 Machine CSR profile，再独立实现唯一 CSR/trap 状态所有者及其单元测试，主 decoder 仍保持 CSR illegal；
+6. 冻结 Machine CSR profile，再独立实现唯一 CSR/trap 状态所有者及其单元测试，主 decoder 仍保持 CSR illegal；
 7. 已重构 LSU/core 的 MEM 结果组装边界，接入 CSR 合法性检查、最终异常合并、年轻 DMem 请求抑制、trap redirect 和提交跟踪；
 8. 已激活六条 CSR 指令，并完成 CSR late-result、连续访问、读写抑制、只读/未知地址和精确 trap 的 core 级 directed test；
-9. 同步异常闭环稳定后补 `MRET`，再加入 RV32M 多周期单元；
-10. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
-11. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源；
-12. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
+9. 同步异常 cause 矩阵闭环后独立实现 `MRET`；
+10. 独立实现 Machine counter；需要对外声明 Zicntr 时，再加入 unprivileged counter shadow 和平台 `time` 来源，随后冻结 v0.3 最小 Machine Mode；
+11. 独立加入 RV32M 多周期单元；
+12. 独立加入 Machine interrupt，复用已经验证的 trap 提交与重定向框架；
+13. 功能增量稳定后再分别推进官方架构测试、差分验证、综合和 STA 闭环。
 
 每个增量都遵循“先讲清架构行为和逐周期路径，再修改最小 RTL，再补定向测试与断言，最后跑全回归”的学习闭环。旧回归必须始终通过，不能依靠同时修改多个未验证模块来跨过中间失败状态。
