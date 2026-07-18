@@ -155,6 +155,31 @@ module tb_rv32_csr_trap;
 
     task automatic test_mscratch_rmw;
         begin
+            reset_dut();
+
+            apply_access(
+                CSR_ADDR_MSCRATCH,
+                CSR_WRITE,
+                32'ha5a5_5a5a,
+                1'b1,
+                1'b1,
+                32'b0,
+                1'b0,
+                "prepare nonzero mscratch before read suppression"
+            );
+            apply_access(
+                CSR_ADDR_MSCRATCH,
+                CSR_WRITE,
+                32'b0,
+                1'b0,
+                1'b1,
+                32'b0,
+                1'b0,
+                "CSRRW rd=x0 suppresses nonzero old value but writes zero"
+            );
+            check_csr_value(CSR_ADDR_MSCRATCH, 32'b0,
+                            "CSRRW rd=x0 source zero still commits");
+
             apply_access(
                 CSR_ADDR_MSCRATCH,
                 CSR_WRITE,
@@ -198,6 +223,8 @@ module tb_rv32_csr_trap;
 
     task automatic test_fixed_and_read_only_csrs;
         begin
+            reset_dut();
+
             apply_access(
                 CSR_ADDR_MISA,
                 CSR_WRITE,
@@ -250,6 +277,18 @@ module tb_rv32_csr_trap;
 
     task automatic test_unknown_and_invalid_accesses;
         begin
+            reset_dut();
+            apply_access(
+                CSR_ADDR_MSCRATCH,
+                CSR_WRITE,
+                32'hff00_f00f,
+                1'b0,
+                1'b1,
+                32'b0,
+                1'b0,
+                "prepare mscratch sentinel for invalid accesses"
+            );
+
             apply_access(
                 12'h302,
                 CSR_SET,
@@ -314,6 +353,8 @@ module tb_rv32_csr_trap;
     task automatic test_warl_fields;
         int unsigned low_bits;
         begin
+            reset_dut();
+
             for (low_bits = 0; low_bits < 4; low_bits++) begin
                 apply_access(
                     CSR_ADDR_MTVEC,
@@ -406,6 +447,8 @@ module tb_rv32_csr_trap;
 
     task automatic test_trap_wait_and_commit;
         begin
+            reset_dut();
+
             apply_access(
                 CSR_ADDR_MTVEC,
                 CSR_WRITE,
@@ -425,6 +468,36 @@ module tb_rv32_csr_trap;
                 32'b0,
                 1'b0,
                 "enable mstatus.MIE before trap"
+            );
+            apply_access(
+                CSR_ADDR_MEPC,
+                CSR_WRITE,
+                32'h0000_0340,
+                1'b0,
+                1'b1,
+                32'b0,
+                1'b0,
+                "prepare mepc sentinel before waiting trap"
+            );
+            apply_access(
+                CSR_ADDR_MCAUSE,
+                CSR_WRITE,
+                32'hdead_beef,
+                1'b0,
+                1'b1,
+                32'b0,
+                1'b0,
+                "prepare mcause sentinel before waiting trap"
+            );
+            apply_access(
+                CSR_ADDR_MTVAL,
+                CSR_WRITE,
+                32'hcafe_babe,
+                1'b0,
+                1'b1,
+                32'b0,
+                1'b0,
+                "prepare mtval sentinel before waiting trap"
             );
 
             drive_trap_inputs(
@@ -506,6 +579,8 @@ module tb_rv32_csr_trap;
 
     task automatic test_trap_priority_over_explicit_write;
         begin
+            reset_dut();
+
             apply_access(
                 CSR_ADDR_MSCRATCH,
                 CSR_WRITE,
@@ -558,7 +633,7 @@ module tb_rv32_csr_trap;
             check_csr_value(CSR_ADDR_MTVAL, 32'hffff_ffff,
                             "priority trap records instruction value");
             check_csr_value(CSR_ADDR_MSTATUS, 32'h0000_1800,
-                            "second trap stacks cleared MIE into MPIE");
+                            "trap stacks reset MIE into MPIE");
         end
     endtask
 

@@ -272,7 +272,7 @@ module tb_rv32_forward_unit;
         ex_result_late = 1'b1;
         ex_rd_addr     = 5'd13;
         check_outputs(FWD_REG, FWD_REG, 1'b1,
-                      "late-result hazard on ID rs2 (CSR old value)");
+                      "late-result hazard on ID rs2");
 
         set_defaults();
         id_valid       = 1'b1;
