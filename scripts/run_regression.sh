@@ -29,7 +29,7 @@ fi
 if [[ -n "${BUILD_ROOT:-}" ]]; then
     mkdir -p "${BUILD_ROOT}"
 else
-    BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rv32-v01-regression.XXXXXX")"
+    BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/rv32-rtl-regression.XXXXXX")"
 fi
 
 cd "${ROOT_DIR}"
@@ -100,7 +100,9 @@ core_run_log="${BUILD_ROOT}/tb_rv32_core.run.log"
 core_output="${BUILD_ROOT}/tb_rv32_core.vvp"
 
 if ! iverilog -g2012 -s tb_rv32_core -o "${core_output}" \
-    -f tb/core/rv32_core.f >"${core_compile_log}" 2>&1; then
+    -f filelists/rv32_core_rtl.f \
+    -f tb/core/rv32_core_tb.f \
+    >"${core_compile_log}" 2>&1; then
     echo "[FAIL] tb_rv32_core: Icarus compile failed" >&2
     tail -n 160 "${core_compile_log}" >&2
     exit 1
@@ -126,7 +128,8 @@ if [[ "${RUN_VERILATOR}" -eq 1 ]]; then
         -Wno-UNSIGNED -Wno-BLKSEQ \
         --Mdir "${verilator_dir}" \
         --top-module tb_rv32_core \
-        -f tb/core/rv32_core.f \
+        -f filelists/rv32_core_rtl.f \
+        -f tb/core/rv32_core_tb.f \
         >"${verilator_build_log}" 2>&1; then
         echo "[FAIL] tb_rv32_core: Verilator build failed" >&2
         tail -n 200 "${verilator_build_log}" >&2
@@ -143,5 +146,5 @@ if [[ "${RUN_VERILATOR}" -eq 1 ]]; then
 fi
 
 echo
-echo "[PASS] v0.1 regression completed: ${unit_count}/${unit_total} unit TBs and core TB passed"
+echo "[PASS] RTL regression completed: ${unit_count}/${unit_total} unit TBs and core TB passed"
 echo "[INFO] Logs retained under ${BUILD_ROOT}"

@@ -1,4 +1,4 @@
-# macOS / editor noise
+# macOS and editor noise
 .DS_Store
 ._*
 .vscode/
@@ -14,7 +14,7 @@
 *.orig
 *.rej
 
-# Simulator outputs
+# Simulator and waveform outputs
 *.vcd
 *.vpd
 *.fsdb
@@ -31,44 +31,12 @@ vc_hdrs.h
 dump.fsdb
 dump.vcd
 
-# Build / run directories
+# Build and run directories
 build/
 out/
 work/
-worklib/
-INCA_libs/
-xcelium.d/
 verilator/
 obj_dir/
-
-# Synopsys / ASIC flow generated files
-*.ddc
-*.db
-*.sdf
-*.spef
-*.sdc.out
-*.svf
-*.mr
-*.pvl
-*.syn
-*.rep
-*.rpt
-command.log
-default.svf
-alib-52/
-analyzed/
-unmapped/
-mapped/
-spyglass-*/
-.spyglass*/
-*.swl
-/scripts/spyglass/rv32_core/
-
-# Generated artifacts under project output folders
-waves/*
-!waves/.gitkeep
-reports/*
-!reports/.gitkeep
 
 # Generated binaries and memory images
 *.elf
