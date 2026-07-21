@@ -55,15 +55,15 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_CSRRSI    = 3'b110;
     localparam logic [2:0] FUNCT3_CSRRCI    = 3'b111;
 // exception
-    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED = 32'd0;
-    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
-    localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION      = 32'd2;
-    localparam logic [31:0] EXCEPTION_CAUSE_BREAKPOINT               = 32'd3;
-    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED  = 32'd4;
-    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT        = 32'd5;
-    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED = 32'd6;
-    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT       = 32'd7;
-    localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE  = 32'd11;
+    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED  = 32'd0;
+    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT        = 32'd1;
+    localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION             = 32'd2;
+    localparam logic [31:0] EXCEPTION_CAUSE_BREAKPOINT                      = 32'd3;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED         = 32'd4;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT               = 32'd5;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED        = 32'd6;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT              = 32'd7;
+    localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE         = 32'd11;
 // pipeline control
     typedef enum logic [1:0] {  // how to update pipeline reg
         PIPE_LOAD           = 2'b00, // update
@@ -75,8 +75,8 @@ package rv32_pkg;
     typedef enum logic [1:0] { // how to update pc reg
         FETCH_RESET         = 2'b00,    // back to RESET_VECTOR
         FETCH_HOLD          = 2'b01,    // keep current pc
-        FETCH_SEQUENTIAL    = 2'b10,    // pc = next pc
-        FETCH_REDIRECT      = 2'b11     // pc redirect
+        FETCH_SEQUENTIAL    = 2'b10,    // pc = next pc, which means ifu fetch a valid instruction and there is no redirection, so ifu will use pc plus 4 for the next fetch.
+        FETCH_REDIRECT      = 2'b11     // pc redirect, include branch, jump and trap
     } fetch_action_e;
 
 // decode control
@@ -87,7 +87,7 @@ package rv32_pkg;
         IMM_B               = 3'b011,
         IMM_U               = 3'b100,
         IMM_J               = 3'b101
-    } immediate_type_e;
+    } immediate_type_e; // o-decoder, i-imm_gen
 
 // execute control
     typedef enum logic [1:0] { // sel alu opa
@@ -219,7 +219,7 @@ package rv32_pkg;
         logic        valid;
         logic [31:0] pc;
         logic [31:0] instruction;
-        logic [31:0] pc_plus_4;
+        logic [31:0] pc_plus_4; // jal, jalr writeback
         exception_t  exception;
     } if_id_t;
 
