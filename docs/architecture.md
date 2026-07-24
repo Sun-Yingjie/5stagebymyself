@@ -85,7 +85,7 @@ rv32_core
 |---|---:|---|
 | `RESET_VECTOR` | `0x00000000` | 复位后的第一条取指地址 |
 | `MTVEC_RESET` | `0x00000000` | `mtvec` 复位值，低两位强制清零 |
-| `COPROC_ENABLE` | `0` | 预留参数；当前不能启用协处理器数据通路 |
+| `COPROC_ENABLE` | `0` | 保留参数；当前及本项目已冻结最终目标均不启用协处理器数据通路 |
 
 ### 5.2 IMem
 
@@ -125,7 +125,7 @@ rv32_core
 
 ### 5.5 协处理器预留端口
 
-RTL 保留 `cp_req_*` 与 `cp_rsp_*` 端口。当前所有请求输出和 `cp_rsp_ready` 固定为 0，`COPROC_ENABLE` 也尚未连接到执行路径；这些端口只表示未来扩展位置，不构成已实现功能。
+RTL 保留 `cp_req_*` 与 `cp_rsp_*` 端口。所有请求输出和 `cp_rsp_ready` 固定为 0，`COPROC_ENABLE` 也不连接执行路径。它们只作为与独立 NPU/异构项目的跨项目集成边界；本处理器项目不实现或启用协处理器数据通路。
 
 ## 6. Valid-ready 事务合同
 
@@ -152,7 +152,7 @@ IFU 会把 redirect 前的 pending/outstanding 请求标为 stale，并接收、
 ## 8. 当前不支持的能力
 
 - RV32M、浮点、向量、压缩指令；
-- `MRET`、interrupt、counter、完整 privilege transition；
+- `MRET`、`WFI` hint、interrupt、counter、完整 privilege transition；
 - Cache、MMU、虚拟内存、Linux、多核与一致性；
 - 非阻塞多笔访存和 transaction ID；
 - 已启用的协处理器执行路径；

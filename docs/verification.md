@@ -71,7 +71,7 @@ Core 环境由四个源文件组成：
 
 ## 3. 当前回归结果
 
-2026-07-18 在 PR #5 合入基线上复现的结果为：
+2026-07-24 在 D0 设计合同分支上重新复现的当前 RTL 结果为：
 
 | 回归 | 结果 |
 |---|---|
@@ -142,7 +142,7 @@ scripts/run_regression.sh --icarus-only
 BUILD_ROOT=/tmp/rv32-build scripts/run_regression.sh
 ```
 
-独立检查可综合 Core 顶层：
+独立对面向综合的 Core 顶层做 Verilator lint/elaboration 检查：
 
 ```bash
 verilator --lint-only --sv -Wall -Wno-fatal \
@@ -160,12 +160,12 @@ verilator --lint-only --sv -Wall -Wno-fatal \
 
 ### 6.1 ACT4
 
-当前没有 ACT4 runner、批量 ELF/HEX 执行或 signature 判定，不能宣称完整 RV32I 架构测试通过。下一步 runner 至少需要：
+当前没有 ACT4 runner、批量 ELF/HEX 执行或 signature 判定，不能宣称完整 RV32I 架构测试通过。进入 V1 阶段时，runner 至少需要：
 
 - 锁定 ACT4/测试环境版本与 DUT ISA profile；
 - 把测试 ELF 转换并装载到当前 IMem/DMem 模型；
 - 定义启动地址、结束条件、PASS/FAIL 和 timeout；
-- 批量运行适用 RV32I/Zicsr 测试并保存机器可读摘要；
+- 按已冻结的 `RV32IM_Zicsr + M-mode-only` profile 批量运行适用测试并保存机器可读摘要；
 - 明确 unsupported 测试必须来自 profile，不允许临时跳过失败项。
 
 ACT4 验证架构语义，不能替代 directed TB 对 hazard、flush、backpressure 和副作用抑制的内部检查。
@@ -174,4 +174,4 @@ ACT4 验证架构语义，不能替代 directed TB 对 hazard、flush、backpres
 
 已有 request/response stall、MEM wait 与 redirect、trap target stall、事务中途复位等确定性场景，但尚无随机 seed、任意等待长度或覆盖率收敛证据。当前也没有参考模型差分。
 
-建议顺序是：先完成可重复的 ACT4 RV32I runner，再增加受 seed 控制的 IMem/DMem 随机 backpressure，最后接入基于 retire/trap 事件的差分验证。
+总体推进顺序以 [最终处理器设计目标](design/00_final_target.md) 为准：D1～D4 先闭环功能 RTL 与对应 directed test，D5 增加受 seed 控制的 IMem/DMem 随机 backpressure 并冻结设计回归，V1 再接入可重复的 ACT4 runner 和基于 retire/trap 事件的参考模型差分。

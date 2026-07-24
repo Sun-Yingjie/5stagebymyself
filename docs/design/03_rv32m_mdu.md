@@ -49,6 +49,7 @@ rsp_valid
 rsp_ready
 rsp_result
 
+idle
 kill
 ```
 
@@ -61,7 +62,8 @@ kill
 4. `rsp_valid && !rsp_ready` 时结果必须保持；
 5. 只在 `rsp_valid && rsp_ready` 时把该 M 指令送入 EX/MEM；
 6. `kill` 取消所有在途状态，不产生 response；
-7. 同步优先级固定为 `reset > kill > normal state transition`。
+7. `idle=1` 当且仅当状态机位于 IDLE，流水不得用 `req_ready` 近似在途状态；
+8. 同步优先级固定为 `reset > kill > normal state transition`。
 
 MDU 不产生同步异常。整数除零和有符号溢出按 ISA 返回普通结果。
 
@@ -73,7 +75,7 @@ m_ex_valid =
     id_ex_q.mdu_ctrl.valid &&
     !id_ex_q.exception.valid
 
-req_valid = m_ex_valid && mdu_is_idle && !global_kill
+req_valid = m_ex_valid && idle && !global_kill
 req_fire  = req_valid && req_ready
 
 response_available = m_ex_valid && rsp_valid
@@ -91,7 +93,8 @@ rsp_fire = rsp_valid && rsp_ready
 
 M 指令的 EX/MEM candidate 只有在 `response_available=1` 时才允许 `valid=1`，payload
 来自 MDU response register；最终只在 `rsp_fire=1` 的时钟沿被流水接受。reset、较老
-trap、MRET 或 interrupt 令 `global_kill=1` 时，`req_valid=0`、`rsp_ready=0`。
+trap、MRET 或 interrupt 令 `global_kill=1` 时，`req_valid=0`、`rsp_ready=0`，因而对外可见的
+`req_fire/rsp_fire` 必须为 0；MDU 内部仍以 `kill` 优先清除状态。
 
 ## 4. 状态机
 
@@ -129,8 +132,9 @@ IDLE → RUN (32 iterations) → FINALIZE → RESPONSE → IDLE
 - 结果保持到 `rsp_ready=1`；
 - 握手后回到 IDLE。
 
-第一版不强制乘除共享同一加法器。先保证数据通路清楚、可验证，资源共享和 PPA
-优化留到 ASIC 报告提供证据之后。
+第一版不强制乘除共享同一加法器。D3 和 D5 先保证数据通路清楚、可验证，
+不以尚无报告支撑的资源共享为验收条件。若 A1 数据证明 PPA 不满足目标，
+再建立独立反馈重构 PR，并重跑受影响的 D5/V1 验证；不在 D3 功能 PR 中预先混入 PPA 重构。
 
 ### 4.1 乘法逐拍 recurrence
 
@@ -302,7 +306,8 @@ snapshot 在后续周期重新成为 active candidate。
 - response backpressure 时 payload 稳定；
 - 精确检查 E0 请求至 E33 response 的固定延迟；
 - kill/reset 覆盖四个状态；
-- kill 与 `req_fire`、`rsp_fire` 同拍时 kill 获胜，且之后没有迟到 response；
+- kill 与上游 request 尝试或已保持 response 同拍时，对外 `req_fire/rsp_fire`
+  仍为 0，kill 清除状态且之后没有迟到 response；
 - 固定最大周期内一定产生 response。
 
 ### 9.2 Core directed TB

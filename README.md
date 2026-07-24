@@ -17,7 +17,7 @@ IMem valid-ready ──► IF ─► ID ─► EX ─► MEM ─► WB
 - EX/MEM、MEM/WB 前递和 WB→ID 同周期旁路；
 - load/CSR late-result bubble、EX redirect、存储反压与在途事务复位；
 - MEM 统一提交精确同步 trap，并提供独立 retire/trap 观察接口；
-- 可综合 SystemVerilog，Icarus 与 Verilator 共用同一套回归入口。
+- 面向综合的 SystemVerilog RTL，Icarus 与 Verilator 共用同一套回归入口。
 
 ## 当前指令范围
 
@@ -81,7 +81,13 @@ docs/
 ├── architecture.md          ISA、模块、状态与顶层接口
 ├── pipeline.md              流水推进、冒险、反压与 flush
 ├── csr_trap.md              CSR profile 与精确同步 trap
-└── verification.md          验证结构、结果、复现与缺口
+├── verification.md          验证结构、结果、复现与缺口
+└── design/                  已冻结的最终目标与后续增量设计合同
+    ├── 00_final_target.md
+    ├── 01_mret.md
+    ├── 02_machine_counters.md
+    ├── 03_rv32m_mdu.md
+    └── 04_machine_interrupt.md
 ```
 
 ## 阅读顺序
@@ -90,17 +96,33 @@ docs/
 2. [五级流水契约](docs/pipeline.md)
 3. [CSR 与同步 Trap](docs/csr_trap.md)
 4. [验证方法与结果](docs/verification.md)
+5. [最终处理器设计目标](docs/design/00_final_target.md)
 
-## 已知限制与下一步
+1～4 描述当前 RTL 已实现事实；5 及其子设计描述后续准备实现的能力，不得提前解读为已实现功能。
 
-- 尚未实现 RV32M、`MRET`、interrupt、counter、Cache、MMU、Linux、多核和一致性；
+## 已知限制与采用的路线
+
+- 尚未实现 RV32M、`MRET`、`WFI` hint、interrupt、counter、Cache、MMU、Linux、多核和一致性；
 - 协处理器端口在 RTL 中保留，但当前固定关闭；
 - 当前 backpressure 证据以 directed 场景为主，尚未形成随机等待回归；
 - 尚未接入 ACT4 和参考模型差分，不能宣称完成完整架构认证。
 
-下一条主线是接入 ACT4 RV32I runner，在不替代现有 directed TB 的前提下完成 ELF/HEX 装载、测试签名判定、超时和批量报告；随后再增量实现 `MRET`、counter、RV32M 与精确 Machine interrupt。
+项目已采用 [最终处理器设计目标](docs/design/00_final_target.md)，后续依赖顺序固定为：
 
-NPU/异构规划和工艺相关实现流程在独立项目中维护。
+```text
+D0  冻结设计合同
+ → D1  MRET + WFI hint
+ → D2  Machine counters
+ → D3  RV32M 迭代式 MDU
+ → D4  精确 Machine interrupt
+ → D5  最终设计冻结与 directed/random regression
+ → V1  ACT4 与参考模型差分
+ → A1  ASIC lint、综合、约束与 STA
+```
+
+`docs/design/` 设计合同合入 `main` 标志 D0 完成，随后进入 D1。D1～D4 各使用独立能力分支和 PR，同步交付合同状态更新、RTL、unit/core directed test 与完整回归证据；D5 再独立完成随机回归和最终设计冻结。ACT4、差分和 ASIC 工具链位于功能设计闭环之后，不是 D0～D5 的替代验收。
+
+NPU、异构系统、AXI crossbar 和 DMA 仍在独立项目中维护。本处理器项目只在 A1 阶段接入 Core 自身的 ASIC 前端流程；当前不含已完成的工艺映射或 signoff 结果。
 
 ## 许可证
 

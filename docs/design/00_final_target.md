@@ -130,7 +130,7 @@ RV32M 使用 EX 内单发射、单在途、固定迭代次数的阻塞式 MDU。
 ```text
 D0  冻结本目录的设计合同
  ↓
-D1  MRET：关闭 trap entry → handler → return 闭环
+D1  MRET + WFI hint：关闭 trap entry → handler → return 闭环
  ↓
 D2  Machine counters：建立内部 commit 事件和 64 位计数状态
  ↓
@@ -157,8 +157,9 @@ A1  ASIC lint、综合、约束与 STA
 3. 所有新增行为具有 directed unit/core test；
 4. Icarus 和 Verilator 共用回归全部通过；
 5. reset、stall、flush、trap 和 redirect 竞争场景没有重复副作用；
-6. 当前能力文档已经从“计划”更新为“已实现事实”；
-7. 不提前把 ACT4、差分或 ASIC 工具结果写成已通过。
+6. D5 具有受 seed 控制、可重复和可批量报告的 IMem/DMem 随机 backpressure 回归；
+7. 当前能力文档已经从“计划”更新为“已实现事实”；
+8. 不提前把 ACT4、差分或 ASIC 工具结果写成已通过。
 
 ACT4 和 ASIC 工具链是设计完成后的验证与实现阶段，不是当前 D0 的门槛。
 
@@ -174,7 +175,9 @@ ACT4 和 ASIC 工具链是设计完成后的验证与实现阶段，不是当前
 
 ## 8. 子设计索引
 
-1. [MRET 设计](01_mret.md)
+1. [MRET 与 WFI hint 设计](01_mret.md)
 2. [Machine Counter 设计](02_machine_counters.md)
 3. [RV32M MDU 设计](03_rv32m_mdu.md)
 4. [Machine Interrupt 设计](04_machine_interrupt.md)
+
+D5、V1 与 A1 的详细执行合同必须在各阶段开始前以独立文档冻结；本 D0 目录不用未冻结细节预先扩张它们的范围。

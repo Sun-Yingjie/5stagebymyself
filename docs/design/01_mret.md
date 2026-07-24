@@ -1,4 +1,4 @@
-# MRET 设计合同
+# MRET 与 WFI hint 设计合同
 
 ## 1. 目标与边界
 
@@ -79,6 +79,7 @@ exception         = 0
 
 ```text
 mret_commit =
+    !rst &&
     ex_mem_q.valid &&
     ex_mem_q.mret &&
     !final_mem_exception.valid &&
@@ -179,7 +180,7 @@ MRET 使用时钟沿前的 `mepc` 和 `MPIE`。它不与同一条指令的显式
 
 ## 9. 完成门禁
 
-- 设计合同、RTL、unit TB、core TB 位于同一能力 PR；
+- D1 能力 PR 必须同步更新已冻结合同的实现状态，并包含 RTL、unit TB 与 core TB；
 - 原有同步异常 cause matrix 不退化；
 - MRET 既不被计作 trap，也不重复退休；
 - 没有被冲刷指令的 GPR、CSR、DMem 或 redirect 副作用；
