@@ -1,5 +1,10 @@
 # 精确 Machine Interrupt 设计合同
 
+> 实现状态（2026-07-26）：已完成。`mie/mip`、三类 Machine interrupt、
+> post-commit/empty 精确边界、CSR/MRET 即时重评价、延后 trap 观察事件及年轻
+> DMem/MDU/redirect 抑制均具有 Unit/Core directed coverage，并通过 Icarus、
+> Verilator 与 Core lint。
+
 ## 1. 目标与边界
 
 本增量在 MRET、Machine counter 和 RV32M 已稳定后加入三类同步电平输入：

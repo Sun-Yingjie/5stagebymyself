@@ -27,6 +27,7 @@ module tb_rv32_lsu;
 
     logic       ex_request_wait;
     logic       mem_response_wait;
+    logic       lsu_outstanding;
     logic [31:0] load_result;
     mem_wb_t    mem_wb_candidate;
     exception_t lsu_exception;
@@ -53,6 +54,7 @@ module tb_rv32_lsu;
         .dmem_rsp_error   (dmem_rsp_error),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
+        .lsu_outstanding  (lsu_outstanding),
         .load_result      (load_result),
         .lsu_exception    (lsu_exception),
         .mem_wb_candidate (mem_wb_candidate),
@@ -216,8 +218,8 @@ module tb_rv32_lsu;
                 "reset: no wait event may be asserted"
             );
             check_condition(
-                !dut.outstanding_q,
-                "reset: outstanding state must be clear"
+                !lsu_outstanding,
+                "reset: exported outstanding state must be clear"
             );
 
             rst = 1'b0;
@@ -273,8 +275,8 @@ module tb_rv32_lsu;
             settle();
 
             check_condition(
-                dut.outstanding_q,
-                "request acceptance: transaction becomes outstanding"
+                lsu_outstanding,
+                "request acceptance: exported outstanding state asserts"
             );
             check_condition(
                 dmem_rsp_ready,

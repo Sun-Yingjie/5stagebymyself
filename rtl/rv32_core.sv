@@ -5,6 +5,9 @@ module rv32_core #(
 ) (
     input  logic        clk,
     input  logic        rst,
+    input  logic        irq_software,
+    input  logic        irq_timer,
+    input  logic        irq_external,
 
     output logic        imem_req_valid,
     input  logic        imem_req_ready,
@@ -62,6 +65,7 @@ module rv32_core #(
 
     ex_mem_t ex_mem_q;
     ex_mem_t ex_mem_d;
+    ex_mem_t ex_mem_base_candidate;
     ex_mem_t ex_mem_candidate;
     ex_mem_t ex_mem_active_candidate;
 
@@ -74,6 +78,8 @@ module rv32_core #(
     redirect_t  ex_raw_redirect;
     redirect_t  raw_redirect;
     redirect_t  trap_redirect;
+    redirect_t  interrupt_redirect;
+    redirect_t  mret_redirect;
     redirect_t  qualified_redirect;
     exception_t lsu_exception;
     exception_t final_mem_exception;
@@ -105,20 +111,50 @@ module rv32_core #(
     logic mem_response_wait;
     logic lsu_response_fire;
     logic trap_take;
+    logic post_commit_interrupt_take;
+    logic empty_interrupt_take;
+    logic interrupt_take;
+    logic mret_commit;
+    logic mem_commit_candidate;
+    logic commit_valid;
     logic redirect_commit;
     logic if_id_ready;
+    logic ex_multicycle_wait;
+    logic lsu_outstanding;
+    logic pipeline_empty;
+    logic empty_interrupt_boundary;
+
+    logic        m_ex_valid;
+    logic        mdu_req_valid;
+    logic        mdu_req_ready;
+    logic        mdu_rsp_valid;
+    logic        mdu_rsp_ready;
+    logic [31:0] mdu_rsp_result;
+    logic        mdu_idle;
+    logic        mdu_kill;
+    mdu_operation_e mdu_req_operation;
 
     logic [31:0] ex_mem_forward_value;
     logic [31:0] mem_wb_forward_value;
     logic [31:0] wb_write_data;
     logic [31:0] lsu_load_result;
     logic [31:0] csr_read_data;
+    logic [31:0] mret_target;
+    logic [31:0] effective_architectural_next_pc;
+    logic [31:0] boundary_resume_pc;
+    logic [31:0] resume_pc_q;
+    logic [31:0] resume_pc_d;
+    logic [31:0] rs1_exec;
+    logic [31:0] rs2_exec;
 
     // Flattened control fields keep Icarus port widths unambiguous.
     logic id_ex_result_late;
     logic ex_mem_register_write;
     logic ex_mem_result_late;
     logic mem_wb_register_write;
+    csr_operation_e ex_mem_csr_operation;
+    logic ex_mem_csr_read_enable;
+    logic ex_mem_csr_write_enable;
 
     // Writeback and retirement
     always_comb begin
@@ -159,8 +195,21 @@ module rv32_core #(
     assign ex_mem_result_late =
         ex_mem_q.mem_ctrl.memory_read || ex_mem_q.csr_ctrl.valid;
     assign mem_wb_register_write = mem_wb_q.wb_ctrl.register_write;
+    assign ex_mem_csr_operation =
+        csr_operation_e'(ex_mem_q.csr_ctrl.operation);
+    assign ex_mem_csr_read_enable = ex_mem_q.csr_ctrl.read_enable;
+    assign ex_mem_csr_write_enable = ex_mem_q.csr_ctrl.write_enable;
 
     assign mem_wb_forward_value = wb_write_data;
+
+    always_comb begin
+        ex_mem_candidate = ex_mem_base_candidate;
+
+        if (id_ex_q.mdu_ctrl.valid) begin
+            ex_mem_candidate.valid       = m_ex_valid && mdu_rsp_valid;
+            ex_mem_candidate.exec_result = mdu_rsp_result;
+        end
+    end
 
     always_comb begin
         ex_mem_active_candidate = ex_mem_candidate;
@@ -199,6 +248,10 @@ module rv32_core #(
 
         if (trap_take) begin
             qualified_redirect = trap_redirect;
+        end else if (interrupt_take) begin
+            qualified_redirect = interrupt_redirect;
+        end else if (mret_commit) begin
+            qualified_redirect = mret_redirect;
         end else if (redirect_commit && raw_redirect.valid) begin
             qualified_redirect = raw_redirect;
         end
@@ -245,8 +298,41 @@ module rv32_core #(
         .rs2_forward_select  (rs2_forward_select),
         .ex_mem_forward_value(ex_mem_forward_value),
         .mem_wb_forward_value(mem_wb_forward_value),
-        .ex_mem_candidate    (ex_mem_candidate),
+        .rs1_exec            (rs1_exec),
+        .rs2_exec            (rs2_exec),
+        .ex_mem_candidate    (ex_mem_base_candidate),
         .raw_redirect        (ex_raw_redirect)
+    );
+
+    assign m_ex_valid =
+        id_ex_q.valid &&
+        id_ex_q.mdu_ctrl.valid &&
+        !id_ex_q.exception.valid;
+
+    assign mdu_kill = rst || trap_take || interrupt_take || mret_commit;
+    assign mdu_req_operation =
+        mdu_operation_e'(id_ex_q.mdu_ctrl.operation);
+    assign mdu_req_valid = m_ex_valid && mdu_idle && !mdu_kill;
+    assign ex_multicycle_wait =
+        m_ex_valid && !mdu_rsp_valid && !mdu_kill;
+    assign mdu_rsp_ready =
+        m_ex_valid &&
+        (ex_mem_action == PIPE_LOAD) &&
+        !mdu_kill;
+
+    rv32_mdu u_mdu (
+        .clk           (clk),
+        .rst           (rst),
+        .req_valid     (mdu_req_valid),
+        .req_ready     (mdu_req_ready),
+        .req_operation (mdu_req_operation),
+        .req_operand_a (rs1_exec),
+        .req_operand_b (rs2_exec),
+        .rsp_valid     (mdu_rsp_valid),
+        .rsp_ready     (mdu_rsp_ready),
+        .rsp_result    (mdu_rsp_result),
+        .idle          (mdu_idle),
+        .kill          (mdu_kill)
     );
 
     rv32_lsu u_lsu (
@@ -267,6 +353,7 @@ module rv32_core #(
         .dmem_rsp_error   (dmem_rsp_error),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
+        .lsu_outstanding  (lsu_outstanding),
         .load_result      (lsu_load_result),
         .lsu_exception    (lsu_exception),
         .mem_wb_candidate (lsu_mem_wb_compat),
@@ -283,6 +370,9 @@ module rv32_core #(
 
     assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
     assign mem_stage_complete = !mem_memory_access || lsu_response_fire;
+
+    assign mret_redirect.valid  = mret_commit;
+    assign mret_redirect.target = mret_commit ? mret_target : 32'b0;
 
     assign csr_access_valid =
         ex_mem_q.valid &&
@@ -307,7 +397,9 @@ module rv32_core #(
     end
 
     assign ex_request_block =
-        ex_mem_q.valid && final_mem_exception.valid;
+        (ex_mem_q.valid && final_mem_exception.valid) ||
+        interrupt_take ||
+        mret_commit;
 
     always_comb begin
         mem_wb_candidate = '0;
@@ -328,26 +420,73 @@ module rv32_core #(
         mem_wb_candidate.exception   = final_mem_exception;
     end
 
+    assign mem_commit_candidate =
+        !rst &&
+        ex_mem_q.valid &&
+        mem_stage_complete &&
+        !final_mem_exception.valid &&
+        mem_wb_candidate.valid;
+
+    assign commit_valid =
+        mem_commit_candidate &&
+        (mem_wb_action == PIPE_LOAD);
+
+    assign mret_commit =
+        mem_commit_candidate &&
+        ex_mem_q.mret;
+
+    assign effective_architectural_next_pc =
+        ex_mem_q.mret ? mret_target : ex_mem_q.architectural_next_pc;
+
+    assign boundary_resume_pc =
+        mem_commit_candidate
+            ? effective_architectural_next_pc
+            : resume_pc_q;
+
+    assign pipeline_empty =
+        !if_id_q.valid &&
+        !id_ex_q.valid &&
+        !ex_mem_q.valid &&
+        !mem_wb_q.valid;
+
+    assign empty_interrupt_boundary =
+        pipeline_empty &&
+        !lsu_outstanding &&
+        mdu_idle;
+
     rv32_csr_trap #(
         .MTVEC_RESET (MTVEC_RESET)
     ) u_csr_trap (
         .clk                 (clk),
         .rst                 (rst),
+        .irq_software        (irq_software),
+        .irq_timer           (irq_timer),
+        .irq_external        (irq_external),
         .mem_valid           (ex_mem_q.valid),
         .mem_pc              (ex_mem_q.pc),
         .mem_instruction     (ex_mem_q.instruction),
         .mem_response_wait   (mem_response_wait),
         .csr_access_valid    (csr_access_valid),
         .csr_address         (ex_mem_q.csr_address),
-        .csr_operation       (ex_mem_q.csr_ctrl.operation),
+        .csr_operation       (ex_mem_csr_operation),
         .csr_source          (ex_mem_q.csr_source),
-        .csr_read_enable     (ex_mem_q.csr_ctrl.read_enable),
-        .csr_write_enable    (ex_mem_q.csr_ctrl.write_enable),
+        .csr_read_enable     (ex_mem_csr_read_enable),
+        .csr_write_enable    (ex_mem_csr_write_enable),
         .final_mem_exception (final_mem_exception),
+        .mret_commit         (mret_commit),
+        .mem_commit_candidate(mem_commit_candidate),
+        .commit_valid        (commit_valid),
+        .boundary_resume_pc  (boundary_resume_pc),
+        .empty_interrupt_boundary(empty_interrupt_boundary),
         .csr_read_data       (csr_read_data),
         .csr_access_illegal  (csr_access_illegal),
+        .mret_target         (mret_target),
         .trap_take           (trap_take),
         .trap_redirect       (trap_redirect),
+        .post_commit_interrupt_take(post_commit_interrupt_take),
+        .empty_interrupt_take(empty_interrupt_take),
+        .interrupt_take      (interrupt_take),
+        .interrupt_redirect  (interrupt_redirect),
         .trap_valid          (trap_valid),
         .trap_pc             (trap_pc),
         .trap_cause          (trap_cause),
@@ -389,9 +528,12 @@ module rv32_core #(
     rv32_pipeline_ctrl u_pipeline_ctrl (
         .rst                     (rst),
         .trap_take               (trap_take),
+        .post_commit_interrupt_take(post_commit_interrupt_take),
+        .empty_interrupt_take    (empty_interrupt_take),
+        .mret_commit             (mret_commit),
         .mem_response_wait       (mem_response_wait),
         .ex_request_wait         (ex_request_wait),
-        .ex_multicycle_wait      (1'b0),
+        .ex_multicycle_wait      (ex_multicycle_wait),
         .raw_redirect_valid      (raw_redirect.valid),
         .late_result_hazard      (late_result_hazard),
         .fetch_response_available(fetch_response_available),
@@ -439,6 +581,20 @@ module rv32_core #(
         endcase
     end
 
+    always_comb begin
+        resume_pc_d = resume_pc_q;
+
+        if (trap_take) begin
+            resume_pc_d = trap_redirect.target;
+        end else if (interrupt_take) begin
+            resume_pc_d = interrupt_redirect.target;
+        end else if (mret_commit) begin
+            resume_pc_d = mret_target;
+        end else if (mem_commit_candidate) begin
+            resume_pc_d = effective_architectural_next_pc;
+        end
+    end
+
     // Pipeline state registers
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -450,15 +606,18 @@ module rv32_core #(
             ex_hold_valid_q    <= 1'b0;
             ex_mem_hold_q      <= '0;
             ex_redirect_hold_q <= '0;
+            resume_pc_q         <= RESET_VECTOR;
         end else begin
             if_id_q  <= if_id_d;
             id_ex_q  <= id_ex_d;
             ex_mem_q <= ex_mem_d;
             mem_wb_q <= mem_wb_d;
+            resume_pc_q <= resume_pc_d;
 
             if (
                 !ex_hold_valid_q &&
                 id_ex_q.valid &&
+                !id_ex_q.mdu_ctrl.valid &&
                 (id_ex_action == PIPE_HOLD)
             ) begin
                 ex_hold_valid_q    <= 1'b1;

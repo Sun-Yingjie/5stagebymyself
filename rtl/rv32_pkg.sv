@@ -14,8 +14,11 @@ package rv32_pkg;
 // full instruction encodings
     localparam logic [31:0] INSTRUCTION_ECALL  = 32'h0000_0073;
     localparam logic [31:0] INSTRUCTION_EBREAK = 32'h0010_0073;
+    localparam logic [31:0] INSTRUCTION_MRET   = 32'h3020_0073;
+    localparam logic [31:0] INSTRUCTION_WFI    = 32'h1050_0073;
 // funct7
     localparam logic [6:0] FUNCT7_BASE      = 7'b000_0000;
+    localparam logic [6:0] FUNCT7_MULDIV    = 7'b000_0001;
     localparam logic [6:0] FUNCT7_SUB_SRA   = 7'b010_0000;
 // funct3
     // arithmetic logic operation
@@ -64,6 +67,9 @@ package rv32_pkg;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED = 32'd6;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT       = 32'd7;
     localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE  = 32'd11;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_SOFTWARE = 32'h8000_0003;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_TIMER    = 32'h8000_0007;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_EXTERNAL = 32'h8000_000b;
 // pipeline control
     typedef enum logic [1:0] {  // how to update pipeline reg
         PIPE_LOAD           = 2'b00, // update
@@ -114,6 +120,22 @@ package rv32_pkg;
         ALU_AND             = 4'b1001
     } alu_operation_e;
 
+    typedef enum logic [2:0] { // RV32M funct3 encoding
+        MDU_MUL             = 3'b000,
+        MDU_MULH            = 3'b001,
+        MDU_MULHSU          = 3'b010,
+        MDU_MULHU           = 3'b011,
+        MDU_DIV             = 3'b100,
+        MDU_DIVU            = 3'b101,
+        MDU_REM             = 3'b110,
+        MDU_REMU            = 3'b111
+    } mdu_operation_e;
+
+    typedef struct packed {
+        logic           valid;
+        mdu_operation_e operation;
+    } mdu_ctrl_t;
+
     typedef enum logic [2:0] { // sel branch compare
         BR_NONE             = 3'b000,
         BR_EQ               = 3'b001,
@@ -127,11 +149,17 @@ package rv32_pkg;
 // CSR control
     localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
     localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
+    localparam logic [11:0] CSR_ADDR_MIE        = 12'h304;
     localparam logic [11:0] CSR_ADDR_MTVEC      = 12'h305;
     localparam logic [11:0] CSR_ADDR_MSCRATCH   = 12'h340;
     localparam logic [11:0] CSR_ADDR_MEPC       = 12'h341;
     localparam logic [11:0] CSR_ADDR_MCAUSE     = 12'h342;
     localparam logic [11:0] CSR_ADDR_MTVAL      = 12'h343;
+    localparam logic [11:0] CSR_ADDR_MIP        = 12'h344;
+    localparam logic [11:0] CSR_ADDR_MCYCLE     = 12'hB00;
+    localparam logic [11:0] CSR_ADDR_MINSTRET   = 12'hB02;
+    localparam logic [11:0] CSR_ADDR_MCYCLEH    = 12'hB80;
+    localparam logic [11:0] CSR_ADDR_MINSTRETH  = 12'hB82;
     localparam logic [11:0] CSR_ADDR_MVENDORID  = 12'hF11;
     localparam logic [11:0] CSR_ADDR_MARCHID    = 12'hF12;
     localparam logic [11:0] CSR_ADDR_MIMPID     = 12'hF13;
@@ -202,7 +230,9 @@ package rv32_pkg;
         logic            illegal_instruction;
         logic            environment_call;
         logic            breakpoint;
+        logic            mret;
         csr_ctrl_t       csr_ctrl;
+        mdu_ctrl_t       mdu_ctrl;
         ex_ctrl_t        ex_ctrl;
         mem_ctrl_t       mem_ctrl;
         wb_ctrl_t        wb_ctrl;
@@ -241,6 +271,9 @@ package rv32_pkg;
 
         csr_ctrl_t  csr_ctrl;
         logic [11:0] csr_address;
+        mdu_ctrl_t  mdu_ctrl;
+
+        logic        mret;
 
         ex_ctrl_t    ex_ctrl;
         mem_ctrl_t   mem_ctrl;
@@ -253,6 +286,7 @@ package rv32_pkg;
         logic [31:0] pc;
         logic [31:0] instruction;
         logic [31:0] pc_plus_4;
+        logic [31:0] architectural_next_pc;
 
         logic [31:0] exec_result;
         logic [31:0] store_data;
@@ -260,6 +294,8 @@ package rv32_pkg;
         logic [11:0] csr_address;
         logic [31:0] csr_source;
         logic [4:0]  rd_addr;
+
+        logic        mret;
 
         mem_ctrl_t   mem_ctrl;
         wb_ctrl_t    wb_ctrl;

@@ -13,6 +13,8 @@
 *.bak
 *.orig
 *.rej
+__pycache__/
+*.py[cod]
 
 # Simulator and waveform outputs
 *.vcd

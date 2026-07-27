@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "act4": {
+    "repository": "https://github.com/riscv/riscv-arch-test.git",
+    "revision": "072ed2e3d205ac9964a93c23759a9cc1a949b784"
+  },
+  "reference_model": {
+    "name": "sail-riscv",
+    "version": "0.13"
+  },
+  "profile": {
+    "name": "five-stage-rv32im-zicsr",
+    "extensions": ["I", "M", "Zicsr"],
+    "include_priv_tests": false,
+    "custom_m_mode": true,
+    "standard_sm": false,
+    "zicntr": false
+  },
+  "memory": {
+    "reset_vector": "0x80000000",
+    "test_base": "0x80000000",
+    "size_bytes": 262144,
+    "tohost": "0x8003fff0"
+  },
+  "expected_selection": {
+    "I": 39,
+    "M": 8,
+    "Zicsr": 6,
+    "total": 53,
+    "manifest": "expected_tests.txt"
+  }
+}

@@ -87,7 +87,8 @@ module tb_rv32_csr_decoder;
 
         check_invalid(INSTRUCTION_ECALL, "ECALL is not a CSR instruction");
         check_invalid(INSTRUCTION_EBREAK, "EBREAK is not a CSR instruction");
-        check_invalid(32'h3020_0073, "MRET is not a CSR instruction");
+        check_invalid(INSTRUCTION_MRET, "MRET is not a CSR instruction");
+        check_invalid(INSTRUCTION_WFI, "WFI is not a CSR instruction");
         check_invalid(
             make_instruction(12'h300, 5'd1, 3'b100, 5'd2, OPCODE_SYSTEM),
             "reserved SYSTEM funct3 is not Zicsr"

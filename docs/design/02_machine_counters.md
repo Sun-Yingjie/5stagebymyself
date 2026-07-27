@@ -1,5 +1,9 @@
 # Machine Counter 设计合同
 
+> 实现状态（2026-07-26）：已完成。内部 commit 事件、四个 Machine counter
+> CSR half、自动更新与显式写覆盖语义均具有 Unit/Core directed coverage，并通过
+> Icarus、Verilator 与 Core lint。
+
 ## 1. 目标与边界
 
 本增量实现 Machine Mode 的两个基本 64 位计数器：

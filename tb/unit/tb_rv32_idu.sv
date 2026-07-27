@@ -368,6 +368,21 @@ module tb_rv32_idu;
 
         check_candidate(expected_candidate, "CSRRSI uimm=0 enters ID/EX");
 
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_03a0;
+        if_id_q.instruction = make_r_instruction(
+            FUNCT7_MULDIV,
+            5'd6,
+            5'd5,
+            MDU_MULHSU,
+            5'd9
+        );
+        if_id_q.pc_plus_4 = 32'h0000_03a4;
+        wb_bus = '0;
+
+        check_mdu_state(MDU_MULHSU, "MULHSU metadata enters ID/EX");
+
         // Stale instruction bits in an invalid IF/ID entry are not an exception.
         if_id_q             = '0;
         if_id_q.instruction = 32'hffff_ffff;
@@ -413,14 +428,50 @@ module tb_rv32_idu;
             "EBREAK creates breakpoint metadata"
         );
 
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0700;
+        if_id_q.instruction = INSTRUCTION_MRET;
+        if_id_q.pc_plus_4   = 32'h0000_0704;
+
+        check_system_hint_state(
+            1'b1,
+            "MRET enters ID/EX as side-effect-free return metadata"
+        );
+
+        if_id_q             = '0;
+        if_id_q.valid       = 1'b1;
+        if_id_q.pc          = 32'h0000_0710;
+        if_id_q.instruction = INSTRUCTION_WFI;
+        if_id_q.pc_plus_4   = 32'h0000_0714;
+
+        check_system_hint_state(
+            1'b0,
+            "WFI enters ID/EX as a side-effect-free NOP hint"
+        );
+
+        if_id_q                   = '0;
+        if_id_q.valid             = 1'b1;
+        if_id_q.instruction       = INSTRUCTION_MRET;
+        if_id_q.exception.valid   = 1'b1;
+        if_id_q.exception.cause   =
+            EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT;
+        if_id_q.exception.value   = 32'h0000_0720;
+
+        check_exception_state(
+            EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT,
+            32'h0000_0720,
+            "incoming IF exception poisons MRET metadata"
+        );
+
         // An exception detected in IF poisons an otherwise legal instruction.
         if_id_q                   = '0;
         if_id_q.valid             = 1'b1;
         if_id_q.instruction       = make_r_instruction(
-            FUNCT7_BASE,
+            FUNCT7_MULDIV,
             5'd6,
             5'd5,
-            FUNCT3_ADD_SUB,
+            MDU_DIV,
             5'd7
         );
         if_id_q.exception.valid   = 1'b1;
@@ -631,6 +682,9 @@ module tb_rv32_idu;
                 (id_ex_candidate.exception.value !== expected_value) ||
                 (id_ex_candidate.uses_rs1 !== 1'b0) ||
                 (id_ex_candidate.uses_rs2 !== 1'b0) ||
+                (id_ex_candidate.mret !== 1'b0) ||
+                (id_ex_candidate.csr_ctrl !== '0) ||
+                (id_ex_candidate.mdu_ctrl !== '0) ||
                 (id_ex_candidate.ex_ctrl !== '0) ||
                 (id_ex_candidate.mem_ctrl !== '0) ||
                 (id_ex_candidate.wb_ctrl !== '0)
@@ -638,18 +692,96 @@ module tb_rv32_idu;
                 error_count++;
 
                 $error(
-                    "[FAIL] %s: valid=%b exception=%h uses=%b%b ex=%h mem=%h wb=%h",
+                    "[FAIL] %s: valid=%b exception=%h uses=%b%b mret=%b csr=%h mdu=%h ex=%h mem=%h wb=%h",
                     case_name,
                     id_ex_candidate.valid,
                     id_ex_candidate.exception,
                     id_ex_candidate.uses_rs1,
                     id_ex_candidate.uses_rs2,
+                    id_ex_candidate.mret,
+                    id_ex_candidate.csr_ctrl,
+                    id_ex_candidate.mdu_ctrl,
                     id_ex_candidate.ex_ctrl,
                     id_ex_candidate.mem_ctrl,
                     id_ex_candidate.wb_ctrl
                 );
             end
             else begin
+                $display("[PASS] %s", case_name);
+            end
+        end
+    endtask
+
+    task automatic check_system_hint_state (
+        input logic  expected_mret,
+        input string case_name
+    );
+        ex_ctrl_t expected_ex_ctrl;
+        begin
+            expected_ex_ctrl = '0;
+            expected_ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+            #1ns;
+            if (
+                (id_ex_candidate.valid !== 1'b1) ||
+                (id_ex_candidate.exception.valid !== 1'b0) ||
+                (id_ex_candidate.mret !== expected_mret) ||
+                (id_ex_candidate.uses_rs1 !== 1'b0) ||
+                (id_ex_candidate.uses_rs2 !== 1'b0) ||
+                (id_ex_candidate.immediate !== 32'b0) ||
+                (id_ex_candidate.csr_ctrl !== '0) ||
+                (id_ex_candidate.mdu_ctrl !== '0) ||
+                (id_ex_candidate.ex_ctrl !== expected_ex_ctrl) ||
+                (id_ex_candidate.mem_ctrl !== '0) ||
+                (id_ex_candidate.wb_ctrl !== '0)
+            ) begin
+                error_count++;
+                $error(
+                    "[FAIL] %s: valid=%b exception=%h mret=%b uses=%b%b immediate=%h csr=%h mdu=%h ex=%h mem=%h wb=%h",
+                    case_name,
+                    id_ex_candidate.valid,
+                    id_ex_candidate.exception,
+                    id_ex_candidate.mret,
+                    id_ex_candidate.uses_rs1,
+                    id_ex_candidate.uses_rs2,
+                    id_ex_candidate.immediate,
+                    id_ex_candidate.csr_ctrl,
+                    id_ex_candidate.mdu_ctrl,
+                    id_ex_candidate.ex_ctrl,
+                    id_ex_candidate.mem_ctrl,
+                    id_ex_candidate.wb_ctrl
+                );
+            end else begin
+                $display("[PASS] %s", case_name);
+            end
+        end
+    endtask
+
+    task automatic check_mdu_state (
+        input mdu_operation_e expected_operation,
+        input string          case_name
+    );
+        begin
+            #1ns;
+            if (
+                (id_ex_candidate.valid !== 1'b1) ||
+                (id_ex_candidate.exception.valid !== 1'b0) ||
+                (id_ex_candidate.rs1_addr !== 5'd5) ||
+                (id_ex_candidate.rs2_addr !== 5'd6) ||
+                (id_ex_candidate.rd_addr !== 5'd9) ||
+                (id_ex_candidate.uses_rs1 !== 1'b1) ||
+                (id_ex_candidate.uses_rs2 !== 1'b1) ||
+                (id_ex_candidate.mdu_ctrl.valid !== 1'b1) ||
+                (id_ex_candidate.mdu_ctrl.operation !== expected_operation) ||
+                (id_ex_candidate.ex_ctrl.operand_a_select !== OPA_RS1) ||
+                (id_ex_candidate.ex_ctrl.operand_b_select !== OPB_RS2) ||
+                (id_ex_candidate.wb_ctrl.register_write !== 1'b1) ||
+                (id_ex_candidate.wb_ctrl.writeback_select !== WB_EXEC)
+            ) begin
+                error_count++;
+                $error("[FAIL] %s: packet=%h", case_name, id_ex_candidate);
+            end else begin
                 $display("[PASS] %s", case_name);
             end
         end

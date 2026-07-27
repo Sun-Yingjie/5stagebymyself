@@ -1,5 +1,8 @@
 # MRET 与 WFI hint 设计合同
 
+> 实现状态（2026-07-26）：已完成。RTL、Unit TB、Core directed TB、Icarus、
+> Verilator 与 Core lint 均已闭环；后续 D2-D4 必须保持本文冻结语义。
+
 ## 1. 目标与边界
 
 本增量实现 `MRET`，关闭以下最小 Machine trap 软件闭环：

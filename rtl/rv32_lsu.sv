@@ -20,6 +20,7 @@ module rv32_lsu (
 
     output logic                 ex_request_wait,
     output logic                 mem_response_wait,
+    output logic                 lsu_outstanding,
     output logic [31:0]          load_result,
     output rv32_pkg::exception_t lsu_exception,
     output rv32_pkg::mem_wb_t    mem_wb_candidate,
@@ -60,6 +61,7 @@ module rv32_lsu (
 
     assign mem_response_wait = // 有滞外访存，且DMEM未返回结果
         !rst && outstanding_q && !dmem_rsp_valid;
+    assign lsu_outstanding = outstanding_q;
 
     always_comb begin
         lsu_exception = '0;
