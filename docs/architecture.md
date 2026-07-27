@@ -4,11 +4,12 @@
 
 ## 1. 项目边界
 
-`rv32_core` 是一颗 32 位、单 hart、单发射、顺序执行的 RISC-V Core，而不是完整 SoC。核内包含五级流水、通用寄存器、有限 Machine CSR 与同步 trap 状态；存储器、总线适配器、外设和调试系统位于核外。
+`rv32_core` 是一颗 32 位、单 hart、单发射、顺序执行的 RV32IM + Zicsr Core，而不是完整 SoC。核内包含五级流水、迭代式 MDU、通用寄存器、有限 Machine CSR、同步 trap、MRET 和精确 Machine interrupt 状态；存储器、总线适配器、外设和调试系统位于核外。
 
 当前设计采用：
 
 - `XLEN=32`，`IALIGN=32`；
+- RV32IM + Zicsr，Machine interrupt 使用有限固定 profile；
 - `IF / ID / EX / MEM / WB` 五级流水；
 - 指令与数据访问通道分离；
 - 静态不跳转，branch/JAL/JALR 在 EX 决策；
@@ -28,11 +29,12 @@
 | 跳转 | `JAL JALR` |
 | Load | `LB LH LW LBU LHU` |
 | Store | `SB SH SW` |
+| RV32M | `MUL MULH MULHSU MULHU DIV DIVU REM REMU` |
 | 顺序 | `FENCE` |
 
 在当前顺序、阻塞式数据通道中，`FENCE` 作为无额外副作用的合法指令进入流水并退休。`FENCE.I` 属于未实现的独立扩展，按非法指令处理。
 
-### 2.2 Zicsr 与同步 trap
+### 2.2 Zicsr、Machine 控制与 trap
 
 已实现六条 Zicsr 指令：
 
@@ -40,7 +42,14 @@
 CSRRW CSRRS CSRRC CSRRWI CSRRSI CSRRCI
 ```
 
-当前存在有限 Machine CSR profile，并支持 cause `0/1/2/3/4/5/6/7/11` 的精确同步 trap。具体规则见 [CSR 与同步 Trap](csr_trap.md)。
+当前存在有限 Machine CSR profile，并实现：
+
+- `MRET` 以及作为合法 NOP hint 退休的 `WFI`；
+- `mcycle/mcycleh/minstret/minstreth`；
+- `mie/mip` 与 Machine software/timer/external interrupt；
+- cause `0/1/2/3/4/5/6/7/11` 的精确同步 trap。
+
+具体规则见 [CSR、Trap 与 Machine Interrupt](csr_trap.md)。
 
 ## 3. 模块组织
 
@@ -55,6 +64,7 @@ rv32_core
 ├── rv32_exu
 │   ├── rv32_alu
 │   └── rv32_branch_compare
+├── rv32_mdu
 ├── rv32_lsu
 ├── rv32_csr_trap
 │   └── rv32_csr_alu
@@ -71,9 +81,11 @@ rv32_core
 | `x0`～`x31` | `rv32_regfile` | `x0` 恒为 0，写 `x0` 被抑制 |
 | IF/ID、ID/EX、EX/MEM、MEM/WB | `rv32_core` | 每级以 `valid` 区分真实指令与 bubble |
 | EX hold 快照 | `rv32_core` | request stall 时固定已完成前递的 EX 结果与 redirect |
+| 最近提交边界的 resume PC | `rv32_core` | 为 empty-pipeline interrupt 保存下一架构 PC |
 | IMem pending/outstanding/stale | `rv32_ifu` | 维持取指请求并排空错误路径响应 |
 | DMem outstanding | `rv32_lsu` | 维护单笔数据事务生命周期 |
-| Machine CSR 与 trap entry | `rv32_csr_trap` | 普通 CSR 写和 trap 自动更新共用一个所有者 |
+| MDU request/run/response | `rv32_mdu` | 固定 32 次迭代，response 在消费前保持 |
+| Machine CSR、counter、trap/interrupt entry 与 interrupt event pending | `rv32_csr_trap` | 显式写、自动更新和事件优先级共用一个所有者 |
 
 通用寄存器数组不在复位时清零。软件和 testbench 不得假定 `x1`～`x31` 的复位值；必须先写后读。
 
@@ -110,7 +122,17 @@ rv32_core
 | `dmem_rsp_rdata[31:0]` | 入 | load 返回数据 |
 | `dmem_rsp_error` | 入 | 数据访问错误 |
 
-### 5.4 Retire 与 trap
+### 5.4 Machine interrupt 输入
+
+| 信号 | 方向 | 含义 |
+|---|---|---|
+| `irq_software` | 入 | Machine software interrupt 同步高电平请求，映射到 `mip.MSIP` |
+| `irq_timer` | 入 | Machine timer interrupt 同步高电平请求，映射到 `mip.MTIP` |
+| `irq_external` | 入 | Machine external interrupt 同步高电平请求，映射到 `mip.MEIP` |
+
+三路输入必须已经与 `clk` 同步；异步外设的 CDC 与电平清除由 Core 外部完成。Core 不包含 CLINT、PLIC 或片上 timer。
+
+### 5.5 Retire 与 trap
 
 | 信号 | 含义 |
 |---|---|
@@ -118,12 +140,12 @@ rv32_core
 | `retire_pc/instr` | 退休指令的 PC 与指令字 |
 | `retire_rd_we` | 该指令确实写入非零通用寄存器 |
 | `retire_rd_addr/data` | 写回目的寄存器与数据；仅在 `retire_rd_we=1` 时有架构意义 |
-| `trap_valid` | MEM 提交点本周期发生同步 trap |
-| `trap_pc/cause/value` | 故障指令 PC、cause 与附加值 |
+| `trap_valid` | 同步 trap 观察脉冲，或 interrupt take 后延后一拍的观察脉冲 |
+| `trap_pc/cause/value` | 同步异常的故障 PC/cause/value，或 interrupt 的 resume PC/cause/0 |
 
-产生 trap 的指令不会普通退休；同周期位于 WB 的更老指令仍可退休。因此验证环境必须分别观察 retire 和 trap，两者不能合并成单一事件。
+产生同步 trap 的指令不会普通退休；同周期位于 WB 的更老指令仍可退休。Machine interrupt 在当前 MEM 指令正常提交后进入，因此延后的 interrupt `trap_valid` 可以与该边界指令的 WB `retire_valid` 同拍出现；外部监视器必须先解释 retire，再解释 interrupt trap。两类接口不能合并成单一事件。
 
-### 5.5 协处理器预留端口
+### 5.6 协处理器预留端口
 
 RTL 保留 `cp_req_*` 与 `cp_rsp_*` 端口。所有请求输出和 `cp_rsp_ready` 固定为 0，`COPROC_ENABLE` 也不连接执行路径。它们只作为与独立 NPU/异构项目的跨项目集成边界；本处理器项目不实现或启用协处理器数据通路。
 
@@ -137,25 +159,26 @@ RTL 保留 `cp_req_*` 与 `cp_rsp_*` 端口。所有请求输出和 `cp_rsp_read
 4. 允许旧 response 与下一笔 request 在同一周期分别握手；
 5. `error` 只在响应握手时解释。
 
-IFU 会把 redirect 前的 pending/outstanding 请求标为 stale，并接收、丢弃旧响应，避免错误路径指令进入 IF/ID。LSU 对 load 和 store 都等待响应；store 只有一次 request 握手，外部存储在返回 error 时必须保证失败写没有形成架构可见副作用。
+IFU 会把 redirect 前的 pending/outstanding 请求标为 stale，并接收、丢弃旧响应，避免错误路径指令进入 IF/ID。LSU 对 load 和 store 都等待响应；store 只有一次 request 握手，外部存储在返回 error 时必须保证失败写没有形成架构可见副作用。迭代式 MDU 也采用单请求/单响应所有权，响应在 Core 接收前保持稳定。
 
 ## 7. 复位与初始行为
 
 - `rst` 高有效，并在 `posedge clk` 同步生效；
 - 四级流水寄存器的 `valid` 清零；
 - IFU 回到 `RESET_VECTOR` 并准备重新取指；
-- IFU/LSU 在途事务状态清零；
-- Machine CSR 按 [CSR 与同步 Trap](csr_trap.md) 的 reset 值初始化；
+- IFU/LSU 在途事务和 MDU 状态清零；
+- `resume_pc_q` 回到 `RESET_VECTOR`；
+- Machine CSR、counter 和 interrupt event pending 按 [CSR、Trap 与 Machine Interrupt](csr_trap.md) 的 reset 值初始化；
 - reset 期间不发请求、不接收响应、不产生 retire/trap；
 - 通用寄存器 `x1`～`x31` 不保证复位值。
 
 ## 8. 当前不支持的能力
 
-- RV32M、浮点、向量、压缩指令；
-- `MRET`、`WFI` hint、interrupt、counter、完整 privilege transition；
+- RV32A/F/C/V、`FENCE.I` 及其他未列出的 ISA 扩展；
+- 完整 privilege transition、delegation、PMP、debug CSR 与 vectored `mtvec`；
 - Cache、MMU、虚拟内存、Linux、多核与一致性；
 - 非阻塞多笔访存和 transaction ID；
 - 已启用的协处理器执行路径；
-- 完整 ACT4 认证或参考模型差分。
+- D5 随机等待回归、完整 ACT4 认证或参考模型差分。
 
 流水级逐周期行为见 [五级流水契约](pipeline.md)，验证证据见 [验证方法与结果](verification.md)。

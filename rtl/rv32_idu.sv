@@ -75,7 +75,10 @@ module rv32_idu (
 
         id_ex_candidate.immediate = immediate;
 
+        id_ex_candidate.mret      = decode_ctrl.mret;
+
         id_ex_candidate.csr_ctrl = decode_ctrl.csr_ctrl;
+        id_ex_candidate.mdu_ctrl = decode_ctrl.mdu_ctrl;
         if (decode_ctrl.csr_ctrl.valid) begin
             id_ex_candidate.csr_address = if_id_q.instruction[31:20];
         end
@@ -109,7 +112,9 @@ module rv32_idu (
         if (id_ex_candidate.exception.valid) begin
             id_ex_candidate.uses_rs1 = 1'b0;
             id_ex_candidate.uses_rs2 = 1'b0;
+            id_ex_candidate.mret     = 1'b0;
             id_ex_candidate.csr_ctrl = '0;
+            id_ex_candidate.mdu_ctrl = '0;
             id_ex_candidate.ex_ctrl  = '0;
             id_ex_candidate.mem_ctrl = '0;
             id_ex_candidate.wb_ctrl  = '0;

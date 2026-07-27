@@ -231,6 +231,23 @@ module rv32_decoder(
                         decode_ctrl.breakpoint = 1'b1;
                     end
 
+                    INSTRUCTION_MRET: begin
+                        decode_ctrl.illegal_instruction = 1'b0;
+                        decode_ctrl.mret = 1'b1;
+                        decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                        decode_ctrl.ex_ctrl.operand_b_select =
+                            OPB_IMMEDIATE;
+                        decode_ctrl.mem_ctrl = '0;
+                    end
+
+                    INSTRUCTION_WFI: begin
+                        decode_ctrl.illegal_instruction = 1'b0;
+                        decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                        decode_ctrl.ex_ctrl.operand_b_select =
+                            OPB_IMMEDIATE;
+                        decode_ctrl.mem_ctrl = '0;
+                    end
+
                     default: begin
                         if (csr_decode_ctrl.valid) begin
                             decode_ctrl.illegal_instruction = 1'b0;
@@ -326,89 +343,109 @@ module rv32_decoder(
             end
 
             OPCODE_OP: begin
-                case (instruction[14:12])
-                    FUNCT3_ADD_SUB: begin
-                        case (instruction[31:25])
-                            FUNCT7_BASE: begin
+                if (instruction[31:25] == FUNCT7_MULDIV) begin
+                    decode_ctrl.illegal_instruction = 1'b0;
+                    decode_ctrl.mdu_ctrl.valid = 1'b1;
+
+                    case (instruction[14:12])
+                        3'b000: decode_ctrl.mdu_ctrl.operation = MDU_MUL;
+                        3'b001: decode_ctrl.mdu_ctrl.operation = MDU_MULH;
+                        3'b010: decode_ctrl.mdu_ctrl.operation = MDU_MULHSU;
+                        3'b011: decode_ctrl.mdu_ctrl.operation = MDU_MULHU;
+                        3'b100: decode_ctrl.mdu_ctrl.operation = MDU_DIV;
+                        3'b101: decode_ctrl.mdu_ctrl.operation = MDU_DIVU;
+                        3'b110: decode_ctrl.mdu_ctrl.operation = MDU_REM;
+                        3'b111: decode_ctrl.mdu_ctrl.operation = MDU_REMU;
+                        default: begin
+                            decode_ctrl.illegal_instruction = 1'b1;
+                            decode_ctrl.mdu_ctrl = '0;
+                        end
+                    endcase
+                end else begin
+                    case (instruction[14:12])
+                        FUNCT3_ADD_SUB: begin
+                            case (instruction[31:25])
+                                FUNCT7_BASE: begin
+                                    decode_ctrl.illegal_instruction = 1'b0;
+                                    decode_ctrl.ex_ctrl.alu_operation = ALU_ADD;
+                                end
+
+                                FUNCT7_SUB_SRA: begin
+                                    decode_ctrl.illegal_instruction = 1'b0;
+                                    decode_ctrl.ex_ctrl.alu_operation = ALU_SUB;
+                                end
+
+                                default: begin
+                                    decode_ctrl.illegal_instruction = 1'b1;
+                                end
+                            endcase
+                        end
+
+                        FUNCT3_SLL: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
                                 decode_ctrl.illegal_instruction = 1'b0;
-                                decode_ctrl.ex_ctrl.alu_operation = ALU_ADD;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_SLL;
                             end
+                        end
 
-                            FUNCT7_SUB_SRA: begin
+                        FUNCT3_SLT: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
                                 decode_ctrl.illegal_instruction = 1'b0;
-                                decode_ctrl.ex_ctrl.alu_operation = ALU_SUB;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_SLT;
                             end
-
-                            default: begin
-                                decode_ctrl.illegal_instruction = 1'b1;
-                            end
-                        endcase
-                    end
-
-                    FUNCT3_SLL: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_SLL;
                         end
-                    end
 
-                    FUNCT3_SLT: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_SLT;
-                        end
-                    end
-
-                    FUNCT3_SLTU: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_SLTU;
-                        end
-                    end
-
-                    FUNCT3_XOR: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_XOR;
-                        end
-                    end
-
-                    FUNCT3_SRL_SRA: begin
-                        case (instruction[31:25])
-                            FUNCT7_BASE: begin
+                        FUNCT3_SLTU: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
                                 decode_ctrl.illegal_instruction = 1'b0;
-                                decode_ctrl.ex_ctrl.alu_operation = ALU_SRL;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_SLTU;
                             end
+                        end
 
-                            FUNCT7_SUB_SRA: begin
+                        FUNCT3_XOR: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
                                 decode_ctrl.illegal_instruction = 1'b0;
-                                decode_ctrl.ex_ctrl.alu_operation = ALU_SRA;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_XOR;
                             end
+                        end
 
-                            default: begin
-                                decode_ctrl.illegal_instruction = 1'b1;
+                        FUNCT3_SRL_SRA: begin
+                            case (instruction[31:25])
+                                FUNCT7_BASE: begin
+                                    decode_ctrl.illegal_instruction = 1'b0;
+                                    decode_ctrl.ex_ctrl.alu_operation = ALU_SRL;
+                                end
+
+                                FUNCT7_SUB_SRA: begin
+                                    decode_ctrl.illegal_instruction = 1'b0;
+                                    decode_ctrl.ex_ctrl.alu_operation = ALU_SRA;
+                                end
+
+                                default: begin
+                                    decode_ctrl.illegal_instruction = 1'b1;
+                                end
+                            endcase
+                        end
+
+                        FUNCT3_OR: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
+                                decode_ctrl.illegal_instruction = 1'b0;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_OR;
                             end
-                        endcase
-                    end
-
-                    FUNCT3_OR: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_OR;
                         end
-                    end
 
-                    FUNCT3_AND: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.ex_ctrl.alu_operation = ALU_AND;
+                        FUNCT3_AND: begin
+                            if (instruction[31:25] == FUNCT7_BASE) begin
+                                decode_ctrl.illegal_instruction = 1'b0;
+                                decode_ctrl.ex_ctrl.alu_operation = ALU_AND;
+                            end
                         end
-                    end
 
-                    default: begin
-                        decode_ctrl.illegal_instruction = 1'b1;
-                    end
-                endcase
+                        default: begin
+                            decode_ctrl.illegal_instruction = 1'b1;
+                        end
+                    endcase
+                end
 
                 if (!decode_ctrl.illegal_instruction) begin
                     decode_ctrl.uses_rs1 = 1'b1;

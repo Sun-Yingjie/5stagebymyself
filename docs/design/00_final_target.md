@@ -179,5 +179,9 @@ ACT4 和 ASIC 工具链是设计完成后的验证与实现阶段，不是当前
 2. [Machine Counter 设计](02_machine_counters.md)
 3. [RV32M MDU 设计](03_rv32m_mdu.md)
 4. [Machine Interrupt 设计](04_machine_interrupt.md)
+5. [D5 可重复随机回归合同](05_random_regression.md)
+6. [V1 Spike 差分验证合同](06_differential_validation.md)
+7. [V1 ACT4 冻结回归合同](07_act4_validation.md)
 
-D5、V1 与 A1 的详细执行合同必须在各阶段开始前以独立文档冻结；本 D0 目录不用未冻结细节预先扩张它们的范围。
+D5 与 V1 已按独立文档冻结并执行；A1 仍须在开始前另行冻结详细执行合同。本 D0
+总合同不预先扩张尚未冻结的 ASIC 实现范围。

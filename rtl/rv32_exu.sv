@@ -4,13 +4,13 @@ module rv32_exu (
     input rv32_pkg::forward_select_e rs2_forward_select,
     input logic [31:0] ex_mem_forward_value,
     input logic [31:0] mem_wb_forward_value,
+    output logic [31:0] rs1_exec,
+    output logic [31:0] rs2_exec,
     output rv32_pkg::ex_mem_t ex_mem_candidate,
     output rv32_pkg::redirect_t raw_redirect
 );
     import rv32_pkg::*;
 
-    logic [31:0] rs1_exec;
-    logic [31:0] rs2_exec;
     logic [31:0] alu_operand_a;
     logic [31:0] alu_operand_b;
     logic [31:0] alu_result;
@@ -144,6 +144,8 @@ assign branch_operation =
         ex_mem_candidate.pc = id_ex_q.pc;
         ex_mem_candidate.instruction = id_ex_q.instruction;
         ex_mem_candidate.pc_plus_4 = id_ex_q.pc_plus_4;
+        ex_mem_candidate.architectural_next_pc =
+            control_transfer_taken ? redirect_target : id_ex_q.pc_plus_4;
         ex_mem_candidate.exec_result = alu_result;
         ex_mem_candidate.store_data = rs2_exec;
         ex_mem_candidate.csr_ctrl = id_ex_q.csr_ctrl;
@@ -153,6 +155,7 @@ assign branch_operation =
         ex_mem_candidate.mem_ctrl = id_ex_q.mem_ctrl;
         ex_mem_candidate.wb_ctrl = id_ex_q.wb_ctrl;
         ex_mem_candidate.exception = id_ex_q.exception;
+        ex_mem_candidate.mret = id_ex_q.mret;
 
         if (id_ex_q.valid && !id_ex_q.exception.valid) begin
             if (instruction_address_misaligned) begin
@@ -177,6 +180,7 @@ assign branch_operation =
         end
 
         if (ex_mem_candidate.exception.valid) begin
+            ex_mem_candidate.mret = 1'b0;
             ex_mem_candidate.csr_ctrl = '0;
             ex_mem_candidate.csr_source = 32'b0;
             ex_mem_candidate.mem_ctrl = '0;

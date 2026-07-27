@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+
+name: five-stage-rv32im-zicsr
+compiler_exe: riscv64-unknown-elf-gcc
+objdump_exe: riscv64-unknown-elf-objdump
+ref_model_exe: sail_riscv_sim
+udb_config: five-stage-rv32im-zicsr.yaml
+linker_script: link.ld
+dut_include_dir: .
+include_priv_tests: false

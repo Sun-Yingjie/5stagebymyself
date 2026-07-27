@@ -1,5 +1,9 @@
 # RV32M 迭代式 MDU 设计合同
 
+> 实现状态（2026-07-26）：已完成。八条 RV32M 指令、固定 32 次迭代、
+> response hold、reset/kill、EX forwarding 与 DMem wait 竞争均具有 Unit/Core
+> directed coverage，并通过 Icarus、Verilator 与 Core lint；`misa.M` 已置位。
+
 ## 1. 目标与边界
 
 本增量完整实现八条 RV32M 指令：

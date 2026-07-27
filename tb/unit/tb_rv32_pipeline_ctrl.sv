@@ -7,6 +7,9 @@ module tb_rv32_pipeline_ctrl;
 
     logic rst;
     logic trap_take;
+    logic post_commit_interrupt_take;
+    logic empty_interrupt_take;
+    logic mret_commit;
     logic mem_response_wait;
     logic ex_request_wait;
     logic ex_multicycle_wait;
@@ -26,6 +29,9 @@ module tb_rv32_pipeline_ctrl;
     rv32_pipeline_ctrl dut (
         .rst                     (rst),
         .trap_take               (trap_take),
+        .post_commit_interrupt_take(post_commit_interrupt_take),
+        .empty_interrupt_take    (empty_interrupt_take),
+        .mret_commit             (mret_commit),
         .mem_response_wait       (mem_response_wait),
         .ex_request_wait         (ex_request_wait),
         .ex_multicycle_wait      (ex_multicycle_wait),
@@ -76,6 +82,42 @@ module tb_rv32_pipeline_ctrl;
             PIPE_CLEAR,
             1'b0,
             "trap"
+        );
+
+        set_normal_inputs();
+        post_commit_interrupt_take = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_LOAD,
+            1'b0,
+            "post-commit interrupt"
+        );
+
+        set_normal_inputs();
+        empty_interrupt_take = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            1'b0,
+            "empty-pipeline interrupt"
+        );
+
+        set_normal_inputs();
+        mret_commit = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_LOAD,
+            1'b0,
+            "MRET commit"
         );
 
         set_normal_inputs();
@@ -153,6 +195,9 @@ module tb_rv32_pipeline_ctrl;
         set_normal_inputs();
         rst                      = 1'b1;
         trap_take                = 1'b1;
+        post_commit_interrupt_take = 1'b1;
+        empty_interrupt_take     = 1'b1;
+        mret_commit              = 1'b1;
         mem_response_wait        = 1'b1;
         ex_request_wait          = 1'b1;
         ex_multicycle_wait       = 1'b1;
@@ -171,6 +216,9 @@ module tb_rv32_pipeline_ctrl;
 
         set_normal_inputs();
         trap_take          = 1'b1;
+        post_commit_interrupt_take = 1'b1;
+        empty_interrupt_take = 1'b1;
+        mret_commit         = 1'b1;
         mem_response_wait  = 1'b1;
         raw_redirect_valid = 1'b1;
         check_actions(
@@ -181,6 +229,49 @@ module tb_rv32_pipeline_ctrl;
             PIPE_CLEAR,
             1'b0,
             "trap has priority over MEM wait and redirect"
+        );
+
+        set_normal_inputs();
+        post_commit_interrupt_take = 1'b1;
+        empty_interrupt_take = 1'b1;
+        mret_commit = 1'b1;
+        mem_response_wait = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_LOAD,
+            1'b0,
+            "post-commit interrupt has priority over empty interrupt, MRET, and wait"
+        );
+
+        set_normal_inputs();
+        empty_interrupt_take = 1'b1;
+        mret_commit = 1'b1;
+        mem_response_wait = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            1'b0,
+            "empty interrupt has priority over MRET and wait"
+        );
+
+        set_normal_inputs();
+        mret_commit       = 1'b1;
+        mem_response_wait = 1'b1;
+        raw_redirect_valid = 1'b1;
+        check_actions(
+            FETCH_REDIRECT,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_CLEAR,
+            PIPE_LOAD,
+            1'b0,
+            "MRET has priority over MEM wait and EX redirect"
         );
 
         set_normal_inputs();
@@ -254,6 +345,9 @@ module tb_rv32_pipeline_ctrl;
         begin
             rst                      = 1'b0;
             trap_take                = 1'b0;
+            post_commit_interrupt_take = 1'b0;
+            empty_interrupt_take     = 1'b0;
+            mret_commit              = 1'b0;
             mem_response_wait        = 1'b0;
             ex_request_wait          = 1'b0;
             ex_multicycle_wait       = 1'b0;

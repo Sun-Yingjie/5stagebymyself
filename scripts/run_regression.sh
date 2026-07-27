@@ -80,6 +80,7 @@ UNIT_NAMES=(
     ifu
     imm_gen
     lsu
+    mdu
     pipeline_ctrl
     regfile
 )

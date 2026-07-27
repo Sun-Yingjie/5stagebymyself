@@ -65,6 +65,15 @@ module tb_rv32_decoder;
         test_op(FUNCT3_OR,      FUNCT7_BASE,    ALU_OR,   "OR");
         test_op(FUNCT3_AND,     FUNCT7_BASE,    ALU_AND,  "AND");
 
+        test_mdu(MDU_MUL,    "MUL");
+        test_mdu(MDU_MULH,   "MULH");
+        test_mdu(MDU_MULHSU, "MULHSU");
+        test_mdu(MDU_MULHU,  "MULHU");
+        test_mdu(MDU_DIV,    "DIV");
+        test_mdu(MDU_DIVU,   "DIVU");
+        test_mdu(MDU_REM,    "REM");
+        test_mdu(MDU_REMU,   "REMU");
+
         test_illegal(OPCODE_JALR,   3'b001,        FUNCT7_BASE,
                      "illegal JALR funct3");
         test_illegal(OPCODE_LOAD,   3'b111,        FUNCT7_BASE,
@@ -75,8 +84,8 @@ module tb_rv32_decoder;
                      "illegal SLLI funct7");
         test_illegal(OPCODE_OP_IMM, FUNCT3_SRL_SRA, 7'b000_0001,
                      "illegal shift-immediate funct7");
-        test_illegal(OPCODE_OP,     FUNCT3_ADD_SUB, 7'b000_0001,
-                     "illegal RV32M encoding");
+        test_illegal(OPCODE_OP,     FUNCT3_ADD_SUB, 7'b000_0010,
+                     "illegal reserved OP funct7");
         test_illegal(OPCODE_MISC_MEM, 3'b001, FUNCT7_BASE,
                      "FENCE.I is illegal without Zifencei");
         test_illegal(7'b111_1111,   3'b000,        FUNCT7_BASE,
@@ -201,10 +210,49 @@ module tb_rv32_decoder;
                 expected_ctrl,
                 "EBREAK with nonzero rs1 is illegal"
             );
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.mret = 1'b1;
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            expected_ctrl.mem_ctrl = '0;
             check_decode(
-                32'h3020_0073,
+                INSTRUCTION_MRET,
                 expected_ctrl,
-                "MRET remains illegal before Machine Mode"
+                "exact MRET is legal and side-effect free"
+            );
+
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            expected_ctrl.mem_ctrl = '0;
+            check_decode(
+                INSTRUCTION_WFI,
+                expected_ctrl,
+                "exact WFI is a legal NOP hint"
+            );
+
+            set_expected_defaults();
+            check_decode(
+                INSTRUCTION_MRET | 32'h0000_0080,
+                expected_ctrl,
+                "MRET with nonzero rd is illegal"
+            );
+            check_decode(
+                INSTRUCTION_MRET | 32'h0000_8000,
+                expected_ctrl,
+                "MRET with nonzero rs1 is illegal"
+            );
+            check_decode(
+                INSTRUCTION_WFI | 32'h0000_0080,
+                expected_ctrl,
+                "WFI with nonzero rd is illegal"
+            );
+            check_decode(
+                32'h1020_0073,
+                expected_ctrl,
+                "unimplemented SRET remains illegal"
             );
             check_decode(
                 make_instruction(OPCODE_SYSTEM, 3'b100, FUNCT7_BASE),
@@ -411,6 +459,29 @@ module tb_rv32_decoder;
             expected_ctrl.wb_ctrl.writeback_select = WB_EXEC;
             check_decode(make_instruction(OPCODE_OP, funct3, funct7),
                          expected_ctrl, case_name);
+        end
+    endtask
+
+    task automatic test_mdu (
+        input mdu_operation_e operation,
+        input string          case_name
+    );
+        begin
+            set_expected_defaults();
+            expected_ctrl.illegal_instruction = 1'b0;
+            expected_ctrl.uses_rs1 = 1'b1;
+            expected_ctrl.uses_rs2 = 1'b1;
+            expected_ctrl.mdu_ctrl.valid = 1'b1;
+            expected_ctrl.mdu_ctrl.operation = operation;
+            expected_ctrl.ex_ctrl.operand_a_select = OPA_RS1;
+            expected_ctrl.ex_ctrl.operand_b_select = OPB_RS2;
+            expected_ctrl.wb_ctrl.register_write = 1'b1;
+            expected_ctrl.wb_ctrl.writeback_select = WB_EXEC;
+            check_decode(
+                make_instruction(OPCODE_OP, operation, FUNCT7_MULDIV),
+                expected_ctrl,
+                case_name
+            );
         end
     endtask
 

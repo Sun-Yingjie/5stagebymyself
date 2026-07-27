@@ -37,6 +37,7 @@ module tb_rv32_exu;
         test_csr_register_source_forwarding();
         test_csr_immediate_source();
         test_exception_clears_csr_control();
+        test_mret_metadata();
         test_pc_immediate_operands();
         test_zero_immediate_operands();
         test_store_address_and_data_forwarding();
@@ -107,14 +108,55 @@ module tb_rv32_exu;
             expected_candidate.pc          = id_ex_q.pc;
             expected_candidate.instruction = id_ex_q.instruction;
             expected_candidate.pc_plus_4   = id_ex_q.pc_plus_4;
+            expected_candidate.architectural_next_pc = id_ex_q.pc_plus_4;
             expected_candidate.exec_result = expected_exec_result;
             expected_candidate.store_data  = expected_store_data;
             expected_candidate.csr_ctrl     = id_ex_q.csr_ctrl;
             expected_candidate.csr_address  = id_ex_q.csr_address;
+            expected_candidate.mret         = id_ex_q.mret;
             expected_candidate.rd_addr     = id_ex_q.rd_addr;
             expected_candidate.mem_ctrl    = id_ex_q.mem_ctrl;
             expected_candidate.wb_ctrl     = id_ex_q.wb_ctrl;
             expected_candidate.exception   = id_ex_q.exception;
+        end
+    endtask
+
+    task automatic test_mret_metadata;
+        begin
+            set_defaults();
+            set_instruction_metadata(
+                32'h0000_0160,
+                INSTRUCTION_MRET,
+                5'd0
+            );
+            id_ex_q.mret = 1'b1;
+            id_ex_q.ex_ctrl.operand_a_select = OPA_ZERO;
+            id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+            id_ex_q.mem_ctrl = '0;
+            id_ex_q.wb_ctrl = '0;
+
+            build_expected_candidate(32'b0, 32'b0);
+            check_outputs(
+                1'b0,
+                32'b0,
+                "MRET metadata reaches EX/MEM without EX redirect"
+            );
+
+            id_ex_q.exception.valid = 1'b1;
+            id_ex_q.exception.cause =
+                EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT;
+            id_ex_q.exception.value = id_ex_q.pc;
+            build_expected_candidate(32'b0, 32'b0);
+            expected_candidate.mret = 1'b0;
+            expected_candidate.csr_ctrl = '0;
+            expected_candidate.csr_source = 32'b0;
+            expected_candidate.mem_ctrl = '0;
+            expected_candidate.wb_ctrl = '0;
+            check_outputs(
+                1'b0,
+                32'b0,
+                "incoming exception poisons MRET in EX"
+            );
         end
     endtask
 
@@ -423,6 +465,7 @@ module tb_rv32_exu;
             mem_wb_forward_value = 32'd7;
 
             build_expected_candidate(32'h0000_0240, 32'd7);
+            expected_candidate.architectural_next_pc = 32'h0000_0240;
             check_outputs(
                 1'b1,
                 32'h0000_0240,
@@ -450,6 +493,7 @@ module tb_rv32_exu;
             id_ex_q.ex_ctrl.branch_operation = BR_EQ;
 
             build_expected_candidate(32'h0000_0262, 32'd9);
+            expected_candidate.architectural_next_pc = 32'h0000_0262;
             expected_candidate.mem_ctrl = '0;
             expected_candidate.wb_ctrl = '0;
             expected_candidate.exception.valid = 1'b1;
@@ -509,6 +553,7 @@ module tb_rv32_exu;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
 
             build_expected_candidate(32'h0000_0320, 32'b0);
+            expected_candidate.architectural_next_pc = 32'h0000_0320;
             check_outputs(1'b1, 32'h0000_0320, "JAL redirect");
         end
     endtask
@@ -530,6 +575,7 @@ module tb_rv32_exu;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
 
             build_expected_candidate(32'h0000_0322, 32'b0);
+            expected_candidate.architectural_next_pc = 32'h0000_0322;
             expected_candidate.mem_ctrl = '0;
             expected_candidate.wb_ctrl = '0;
             expected_candidate.exception.valid = 1'b1;
@@ -564,6 +610,7 @@ module tb_rv32_exu;
             ex_mem_forward_value = 32'h0000_1001;
 
             build_expected_candidate(32'h0000_1005, 32'b0);
+            expected_candidate.architectural_next_pc = 32'h0000_1004;
             check_outputs(
                 1'b1,
                 32'h0000_1004,
@@ -592,6 +639,7 @@ module tb_rv32_exu;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
 
             build_expected_candidate(32'h0000_1007, 32'b0);
+            expected_candidate.architectural_next_pc = 32'h0000_1006;
             expected_candidate.mem_ctrl = '0;
             expected_candidate.wb_ctrl = '0;
             expected_candidate.exception.valid = 1'b1;
@@ -810,6 +858,7 @@ module tb_rv32_exu;
             id_ex_q.exception.value = id_ex_q.instruction;
 
             build_expected_candidate(32'h0000_0502, 32'b0);
+            expected_candidate.architectural_next_pc = 32'h0000_0502;
             expected_candidate.mem_ctrl = '0;
             expected_candidate.wb_ctrl = '0;
             check_outputs(

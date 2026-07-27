@@ -1,6 +1,9 @@
 module rv32_pipeline_ctrl (
     input  logic                    rst,
     input  logic                    trap_take,
+    input  logic                    post_commit_interrupt_take,
+    input  logic                    empty_interrupt_take,
+    input  logic                    mret_commit,
     input  logic                    mem_response_wait,
     input  logic                    ex_request_wait,
     input  logic                    ex_multicycle_wait,
@@ -39,6 +42,30 @@ module rv32_pipeline_ctrl (
             id_ex_action    = PIPE_CLEAR;
             ex_mem_action   = PIPE_CLEAR;
             mem_wb_action   = PIPE_CLEAR;
+            redirect_commit = 1'b0;
+        end
+        else if (post_commit_interrupt_take) begin
+            fetch_action    = FETCH_REDIRECT;
+            if_id_action    = PIPE_CLEAR;
+            id_ex_action    = PIPE_CLEAR;
+            ex_mem_action   = PIPE_CLEAR;
+            mem_wb_action   = PIPE_LOAD;
+            redirect_commit = 1'b0;
+        end
+        else if (empty_interrupt_take) begin
+            fetch_action    = FETCH_REDIRECT;
+            if_id_action    = PIPE_CLEAR;
+            id_ex_action    = PIPE_CLEAR;
+            ex_mem_action   = PIPE_CLEAR;
+            mem_wb_action   = PIPE_CLEAR;
+            redirect_commit = 1'b0;
+        end
+        else if (mret_commit) begin
+            fetch_action    = FETCH_REDIRECT;
+            if_id_action    = PIPE_CLEAR;
+            id_ex_action    = PIPE_CLEAR;
+            ex_mem_action   = PIPE_CLEAR;
+            mem_wb_action   = PIPE_LOAD;
             redirect_commit = 1'b0;
         end
         else if (mem_response_wait) begin
