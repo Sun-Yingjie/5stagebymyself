@@ -40,7 +40,9 @@
 
 post-commit 与 empty-pipeline interrupt 分开仲裁，是因为前者必须让当前 MEM 指令进入 MEM/WB，后者没有可提交指令。MRET 后若恢复出的 MIE 立即使 pending interrupt eligible，按 post-commit interrupt 行处理，不先取返回目标指令。
 
-`ex_multicycle_wait` 由 `rv32_mdu` 的响应可用性驱动。M 指令在 ID/EX 保持，EX/MEM 插入 bubble，较老 MEM/WB 继续排空；完成的 MDU response 若遇到较老 MEM wait，会保持稳定直到可以装载 EX/MEM。
+`rv32_execute_stage` 根据当前 M 指令和 `rv32_mdu` response 状态形成
+`ex_multicycle_wait`。M 指令在 ID/EX 保持，EX/MEM 插入 bubble，较老 MEM/WB 继续
+排空；完成的 MDU response 若遇到较老 MEM wait，会保持稳定直到可以装载 EX/MEM。
 
 ## 3. 数据冒险
 

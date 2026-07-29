@@ -92,7 +92,7 @@ module rv32_core #(
     exception_t final_mem_exception;
 
     // Stable execute-stage observation retained for protocol assertions.
-    logic      ex_hold_valid_q;
+    logic ex_hold_valid;
 
     fetch_action_e fetch_action;
     pipe_action_e  if_id_action;
@@ -201,9 +201,10 @@ module rv32_core #(
         endcase
     end
 
-    // Frontend control
+    // Frontend acceptance
     assign if_id_ready = (if_id_action == PIPE_LOAD);
 
+    // Global redirect priority: trap > interrupt > MRET > EX redirect.
     always_comb begin
         qualified_redirect = '0;
 
@@ -256,27 +257,27 @@ module rv32_core #(
     assign execute_kill = trap_take || interrupt_take || mret_commit;
 
     rv32_execute_stage u_execute_stage (
-        .clk                  (clk),
-        .rst                  (rst),
-        .id_ex_q              (id_ex_q),
-        .rs1_forward_select   (rs1_forward_select),
-        .rs2_forward_select   (rs2_forward_select),
-        .ex_mem_forward_value (ex_mem_forward_value),
-        .mem_wb_forward_value (mem_wb_forward_value),
-        .id_ex_action         (id_ex_action),
-        .ex_mem_action        (ex_mem_action),
-        .execute_kill         (execute_kill),
-        .ex_mem_active_candidate(ex_mem_active_candidate),
-        .raw_redirect         (raw_redirect),
-        .ex_hold_valid        (ex_hold_valid_q),
-        .ex_multicycle_wait   (ex_multicycle_wait),
-        .mdu_idle             (mdu_idle),
-        .mdu_req_valid        (mdu_req_valid),
-        .mdu_req_ready        (mdu_req_ready),
-        .mdu_rsp_valid        (mdu_rsp_valid),
-        .mdu_rsp_ready        (mdu_rsp_ready),
-        .mdu_rsp_result       (mdu_rsp_result),
-        .mdu_kill             (mdu_kill)
+        .clk                     (clk),
+        .rst                     (rst),
+        .id_ex_q                 (id_ex_q),
+        .rs1_forward_select      (rs1_forward_select),
+        .rs2_forward_select      (rs2_forward_select),
+        .ex_mem_forward_value    (ex_mem_forward_value),
+        .mem_wb_forward_value    (mem_wb_forward_value),
+        .id_ex_action            (id_ex_action),
+        .ex_mem_action           (ex_mem_action),
+        .execute_kill            (execute_kill),
+        .ex_mem_active_candidate (ex_mem_active_candidate),
+        .raw_redirect            (raw_redirect),
+        .ex_hold_valid           (ex_hold_valid),
+        .ex_multicycle_wait      (ex_multicycle_wait),
+        .mdu_idle                (mdu_idle),
+        .mdu_req_valid           (mdu_req_valid),
+        .mdu_req_ready           (mdu_req_ready),
+        .mdu_rsp_valid           (mdu_rsp_valid),
+        .mdu_rsp_ready           (mdu_rsp_ready),
+        .mdu_rsp_result          (mdu_rsp_result),
+        .mdu_kill                (mdu_kill)
     );
 
     rv32_lsu u_lsu (
@@ -503,14 +504,13 @@ module rv32_core #(
             ex_mem_q.valid <= 1'b0;
             mem_wb_q.valid <= 1'b0;
 
-            resume_pc_q         <= RESET_VECTOR;
+            resume_pc_q <= RESET_VECTOR;
         end else begin
-            if_id_q  <= if_id_d;
-            id_ex_q  <= id_ex_d;
-            ex_mem_q <= ex_mem_d;
-            mem_wb_q <= mem_wb_d;
+            if_id_q    <= if_id_d;
+            id_ex_q    <= id_ex_d;
+            ex_mem_q   <= ex_mem_d;
+            mem_wb_q   <= mem_wb_d;
             resume_pc_q <= resume_pc_d;
-
         end
     end
 endmodule

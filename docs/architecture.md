@@ -79,7 +79,9 @@ rv32_core
 `rv32_mem_commit` 合并最终同步异常，并形成动作无关的 MEM/WB candidate 与提交预览；
 `rv32_wbu` 统一形成写回数据、WB bus 和 retire 输出。MEM/WB 流水寄存器及真正的
 `commit_valid` 仍由 `rv32_core` 控制。`rv32_lsu` 只负责 DMem 事务、store lane、
-load 格式化和 LSU access fault，不再重复形成最终异常或 MEM/WB packet。
+load 格式化和 LSU access fault，不再重复形成最终异常或 MEM/WB packet。四组级间
+流水寄存器、`LOAD/HOLD/CLEAR` 应用以及 `trap > interrupt > MRET > EX redirect`
+仲裁保留在顶层，因为它们共同表达整条流水的全局状态和控制顺序。
 
 ## 4. 状态所有权
 
@@ -171,7 +173,7 @@ IFU 会把 redirect 前的 pending/outstanding 请求标为 stale，并接收、
 ## 7. 复位与初始行为
 
 - `rst` 高有效，并在 `posedge clk` 同步生效；
-- 四级流水寄存器的 `valid` 清零；
+- 四组级间流水寄存器的 `valid` 清零；
 - IFU 回到 `RESET_VECTOR` 并准备重新取指；
 - IFU/LSU 在途事务和 MDU 状态清零；
 - `resume_pc_q` 回到 `RESET_VECTOR`；
@@ -186,6 +188,6 @@ IFU 会把 redirect 前的 pending/outstanding 请求标为 stale，并接收、
 - Cache、MMU、虚拟内存、Linux、多核与一致性；
 - 非阻塞多笔访存和 transaction ID；
 - 已启用的协处理器执行路径；
-- D5 随机等待回归、完整 ACT4 认证或参考模型差分。
+- 随机 IRQ episode、完整特权架构/正式认证，以及包含 trap 或随机程序的差分验证。
 
 流水级逐周期行为见 [五级流水契约](pipeline.md)，验证证据见 [验证方法与结果](verification.md)。

@@ -262,9 +262,9 @@ ex_multicycle_wait =
 
 ## 7. EX hold 快照边界
 
-当前 Core 会在 ID/EX HOLD 时保存已完成 forwarding 的 EX candidate。这对普通 ALU
-指令和 DMem request backpressure 是必要的，但不能在 MDU 尚未完成时保存未完成
-结果。
+`rv32_execute_stage` 会在 ID/EX HOLD 时保存已完成 forwarding 的 EX candidate。
+这对普通 ALU 指令和 DMem request backpressure 是必要的，但不能在 MDU 尚未完成时
+保存未完成结果。
 
 集成后快照捕获谓词冻结为：
 
@@ -283,8 +283,9 @@ snapshot_capture =
 - M 指令 RESPONSE 被更老 MEM wait 阻挡：由 MDU response register 保持结果；
 - MDU response 真正被 pipeline 接受后才允许释放。
 
-reset 或任意全局 flush 必须清除遗留 `ex_hold_valid_q`，不能让被取消指令的普通
-snapshot 在后续周期重新成为 active candidate。
+reset 或任意全局 flush 必须让 `rv32_execute_stage` 清除遗留
+`ex_hold_valid_q`，不能让被取消指令的普通 snapshot 在后续周期重新成为 active
+candidate。
 
 不得仅把当前固定的 `ex_multicycle_wait=0` 接线而保留原 snapshot 条件。
 

@@ -1023,7 +1023,7 @@ module tb_rv32_core;
                 dut.mdu_idle &&
                 !dut.mdu_req_valid &&
                 !dut.mdu_rsp_valid &&
-                !dut.ex_hold_valid_q,
+                !dut.ex_hold_valid,
                 "D5 completion left a live MDU or held EX operation"
             );
 
@@ -1041,7 +1041,7 @@ module tb_rv32_core;
                     dut.mdu_idle &&
                     !dut.mdu_req_valid &&
                     !dut.mdu_rsp_valid &&
-                    !dut.ex_hold_valid_q,
+                    !dut.ex_hold_valid,
                     "D5 drain observed a late MDU or held EX operation"
                 );
             end
@@ -1886,7 +1886,7 @@ module tb_rv32_core;
                 @(posedge clk);
                 #1;
                 check_condition(
-                    dut.ex_hold_valid_q,
+                    dut.ex_hold_valid,
                     "backpressured EX request did not preserve a snapshot"
                 );
                 check_condition(
@@ -5728,7 +5728,7 @@ module tb_rv32_core;
             if (dut.ex_multicycle_wait) begin
                 ex_multicycle_wait_count++;
                 check_condition(
-                    !dut.ex_hold_valid_q,
+                    !dut.ex_hold_valid,
                     "multicycle M instruction created an EX snapshot"
                 );
             end
