@@ -74,6 +74,7 @@ UNIT_NAMES=(
     csr_trap
     csr_decoder
     decoder
+    execute_stage
     exu
     forward_unit
     idu

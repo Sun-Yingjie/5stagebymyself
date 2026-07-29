@@ -9,11 +9,12 @@ Spike 差分。各层结论边界独立，不能互相替代。
 
 ### 1.1 Unit TB
 
-Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 16 个：
+Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 17 个：
 
 ```text
 alu, branch_compare, csr_alu, csr_trap, csr_decoder, decoder,
-exu, forward_unit, idu, ifu, imm_gen, lsu, mdu, pipeline_ctrl, regfile, wbu
+execute_stage, exu, forward_unit, idu, ifu, imm_gen, lsu, mdu,
+pipeline_ctrl, regfile, wbu
 ```
 
 Unit TB 检查：

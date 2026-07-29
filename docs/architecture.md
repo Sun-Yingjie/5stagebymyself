@@ -61,18 +61,22 @@ rv32_core
 │   │   └── rv32_csr_decoder
 │   ├── rv32_imm_gen
 │   └── rv32_regfile
-├── rv32_exu
-│   ├── rv32_alu
-│   └── rv32_branch_compare
-├── rv32_mdu
+├── rv32_execute_stage
+│   ├── rv32_exu
+│   │   ├── rv32_alu
+│   │   └── rv32_branch_compare
+│   └── rv32_mdu
 ├── rv32_lsu
+├── rv32_wbu
 ├── rv32_csr_trap
 │   └── rv32_csr_alu
 ├── rv32_forward_unit
 └── rv32_pipeline_ctrl
 ```
 
-没有独立 WB 模块：写回选择、WB bus 和 retire 输出由 `rv32_core` 直接形成。最终 MEM/WB candidate 和同步异常优先级也由 `rv32_core` 统一决定；LSU 内同名输出只是兼容接口，不是最终状态所有者。
+`rv32_execute_stage` 封装单周期 EXU 与多周期 MDU 的协议协调；`rv32_wbu`
+统一形成写回数据、WB bus 和 retire 输出。最终 MEM/WB candidate 和同步异常优先级
+仍由 `rv32_core` 统一决定；LSU 内同名输出只是兼容接口，不是最终状态所有者。
 
 ## 4. 状态所有权
 

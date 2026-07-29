@@ -75,7 +75,6 @@ module rv32_core #(
 
     ex_mem_t ex_mem_q;
     ex_mem_t ex_mem_d;
-    ex_mem_t ex_mem_base_candidate;
     ex_mem_t ex_mem_candidate;
     ex_mem_t ex_mem_active_candidate;
 
@@ -133,8 +132,8 @@ module rv32_core #(
     logic lsu_outstanding;
     logic pipeline_empty;
     logic empty_interrupt_boundary;
+    logic execute_kill;
 
-    logic        m_ex_valid;
     logic        mdu_req_valid;
     logic        mdu_req_ready;
     logic        mdu_rsp_valid;
@@ -142,7 +141,6 @@ module rv32_core #(
     logic [31:0] mdu_rsp_result;
     logic        mdu_idle;
     logic        mdu_kill;
-    mdu_operation_e mdu_req_operation;
 
     logic [31:0] ex_mem_forward_value;
     logic [31:0] mem_wb_forward_value;
@@ -153,8 +151,6 @@ module rv32_core #(
     logic [31:0] boundary_resume_pc;
     logic [31:0] resume_pc_q;
     logic [31:0] resume_pc_d;
-    logic [31:0] rs1_exec;
-    logic [31:0] rs2_exec;
 
     // Flattened control fields keep Icarus port widths unambiguous.
     logic id_ex_result_late;
@@ -191,15 +187,6 @@ module rv32_core #(
     assign ex_mem_csr_write_enable = ex_mem_q.csr_ctrl.write_enable;
 
     assign mem_wb_forward_value = wb_bus.rd_data;
-
-    always_comb begin
-        ex_mem_candidate = ex_mem_base_candidate;
-
-        if (id_ex_q.mdu_ctrl.valid) begin
-            ex_mem_candidate.valid       = m_ex_valid && mdu_rsp_valid;
-            ex_mem_candidate.exec_result = mdu_rsp_result;
-        end
-    end
 
     always_comb begin
         ex_mem_active_candidate = ex_mem_candidate;
@@ -282,47 +269,28 @@ module rv32_core #(
         .id_ex_candidate (id_ex_candidate)
     );
 
-    rv32_exu u_exu (
-        .id_ex_q             (id_ex_q),
-        .rs1_forward_select  (rs1_forward_select),
-        .rs2_forward_select  (rs2_forward_select),
-        .ex_mem_forward_value(ex_mem_forward_value),
-        .mem_wb_forward_value(mem_wb_forward_value),
-        .rs1_exec            (rs1_exec),
-        .rs2_exec            (rs2_exec),
-        .ex_mem_candidate    (ex_mem_base_candidate),
-        .raw_redirect        (ex_raw_redirect)
-    );
+    assign execute_kill = trap_take || interrupt_take || mret_commit;
 
-    assign m_ex_valid =
-        id_ex_q.valid &&
-        id_ex_q.mdu_ctrl.valid &&
-        !id_ex_q.exception.valid;
-
-    assign mdu_kill = rst || trap_take || interrupt_take || mret_commit;
-    assign mdu_req_operation =
-        mdu_operation_e'(id_ex_q.mdu_ctrl.operation);
-    assign mdu_req_valid = m_ex_valid && mdu_idle && !mdu_kill;
-    assign ex_multicycle_wait =
-        m_ex_valid && !mdu_rsp_valid && !mdu_kill;
-    assign mdu_rsp_ready =
-        m_ex_valid &&
-        (ex_mem_action == PIPE_LOAD) &&
-        !mdu_kill;
-
-    rv32_mdu u_mdu (
-        .clk           (clk),
-        .rst           (rst),
-        .req_valid     (mdu_req_valid),
-        .req_ready     (mdu_req_ready),
-        .req_operation (mdu_req_operation),
-        .req_operand_a (rs1_exec),
-        .req_operand_b (rs2_exec),
-        .rsp_valid     (mdu_rsp_valid),
-        .rsp_ready     (mdu_rsp_ready),
-        .rsp_result    (mdu_rsp_result),
-        .idle          (mdu_idle),
-        .kill          (mdu_kill)
+    rv32_execute_stage u_execute_stage (
+        .clk                  (clk),
+        .rst                  (rst),
+        .id_ex_q              (id_ex_q),
+        .rs1_forward_select   (rs1_forward_select),
+        .rs2_forward_select   (rs2_forward_select),
+        .ex_mem_forward_value (ex_mem_forward_value),
+        .mem_wb_forward_value (mem_wb_forward_value),
+        .ex_mem_action        (ex_mem_action),
+        .execute_kill         (execute_kill),
+        .ex_mem_candidate     (ex_mem_candidate),
+        .ex_raw_redirect      (ex_raw_redirect),
+        .ex_multicycle_wait   (ex_multicycle_wait),
+        .mdu_idle             (mdu_idle),
+        .mdu_req_valid        (mdu_req_valid),
+        .mdu_req_ready        (mdu_req_ready),
+        .mdu_rsp_valid        (mdu_rsp_valid),
+        .mdu_rsp_ready        (mdu_rsp_ready),
+        .mdu_rsp_result       (mdu_rsp_result),
+        .mdu_kill             (mdu_kill)
     );
 
     rv32_lsu u_lsu (

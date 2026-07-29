@@ -12,6 +12,7 @@ rtl/rv32_pipeline_ctrl.sv
 rtl/rv32_idu.sv
 rtl/rv32_exu.sv
 rtl/rv32_mdu.sv
+rtl/rv32_execute_stage.sv
 rtl/rv32_ifu.sv
 rtl/rv32_lsu.sv
 rtl/rv32_wbu.sv
