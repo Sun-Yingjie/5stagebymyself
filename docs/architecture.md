@@ -78,8 +78,8 @@ rv32_core
 `rv32_execute_stage` 封装单周期 EXU 与多周期 MDU 的协议协调；
 `rv32_mem_commit` 合并最终同步异常，并形成动作无关的 MEM/WB candidate 与提交预览；
 `rv32_wbu` 统一形成写回数据、WB bus 和 retire 输出。MEM/WB 流水寄存器及真正的
-`commit_valid` 仍由 `rv32_core` 控制；LSU 内同名输出只是兼容接口，不是最终状态
-所有者。
+`commit_valid` 仍由 `rv32_core` 控制。`rv32_lsu` 只负责 DMem 事务、store lane、
+load 格式化和 LSU access fault，不再重复形成最终异常或 MEM/WB packet。
 
 ## 4. 状态所有权
 

@@ -18,13 +18,12 @@ module rv32_lsu (
     input  logic [31:0]          dmem_rsp_rdata,
     input  logic                 dmem_rsp_error,
 
+    output logic                 response_fire,
     output logic                 ex_request_wait,
     output logic                 mem_response_wait,
     output logic                 lsu_outstanding,
     output logic [31:0]          load_result,
-    output rv32_pkg::exception_t lsu_exception,
-    output rv32_pkg::mem_wb_t    mem_wb_candidate,
-    output rv32_pkg::exception_t mem_exception
+    output rv32_pkg::exception_t lsu_exception
 );
 
     import rv32_pkg::*;
@@ -32,7 +31,6 @@ module rv32_lsu (
     logic        outstanding_q;
     logic        outstanding_d;
     logic        request_fire;
-    logic        response_fire;
     logic        request_slot_available;
     logic        ex_memory_access;
     logic        mem_memory_access;
@@ -40,7 +38,7 @@ module rv32_lsu (
     logic [15:0] selected_load_data;
 
     // Transaction classification
-    assign ex_memory_access = // 执行模块要发出访存请求
+    assign ex_memory_access =
         ex_mem_candidate.valid &&
         !ex_mem_candidate.exception.valid &&
         (
@@ -48,7 +46,7 @@ module rv32_lsu (
             ex_mem_candidate.mem_ctrl.memory_write
         );
 
-    assign mem_memory_access = // 访存模块等待接收访存结果，MEM阶段的指令是有效的访存指令
+    assign mem_memory_access =
         ex_mem_q.valid &&
         (
             ex_mem_q.mem_ctrl.memory_read ||
@@ -59,14 +57,14 @@ module rv32_lsu (
     assign dmem_rsp_ready = !rst && outstanding_q;
     assign response_fire  = dmem_rsp_valid && dmem_rsp_ready;
 
-    assign mem_response_wait = // 有滞外访存，且DMEM未返回结果
+    assign mem_response_wait =
         !rst && outstanding_q && !dmem_rsp_valid;
     assign lsu_outstanding = outstanding_q;
 
     always_comb begin
         lsu_exception = '0;
 
-        if ( // 处在MEM阶段的指令不是异常指令，且MEM阶段的指令是访存指令，且当前收到了DMEM返回的结果，且返回的结果是error
+        if (
             ex_mem_q.valid &&
             !ex_mem_q.exception.valid &&
             mem_memory_access &&
@@ -74,7 +72,7 @@ module rv32_lsu (
             dmem_rsp_error
         ) begin
             lsu_exception.valid = 1'b1;
-            lsu_exception.value = ex_mem_q.exec_result; // 访存地址
+            lsu_exception.value = ex_mem_q.exec_result;
 
             if (ex_mem_q.mem_ctrl.memory_read) begin
                 lsu_exception.cause =
@@ -86,26 +84,14 @@ module rv32_lsu (
         end
     end
 
-    // Compatibility exception output until core owns the final merge.
-    always_comb begin
-        mem_exception = '0;
-
-        if (ex_mem_q.valid) begin
-            mem_exception = ex_mem_q.exception;
-
-            if (!ex_mem_q.exception.valid) begin
-                mem_exception = lsu_exception;
-            end
-        end
-    end
-
     // Request channel and store byte-lane formatting
-    assign request_slot_available = !outstanding_q || response_fire; // MEM阶段没有访存指令，或者MEM阶段的访存指令本周期返回了
+    assign request_slot_available = !outstanding_q || response_fire;
 
-    assign dmem_req_valid = // EX阶段能发出访存请求：MEM阶段的指令不是异常指令（防止要被重刷的EX阶段访存指令产生副作用）；访存通道空闲；EX阶段是访存指令；
+    // Final MEM exceptions, MRET and interrupts arrive through
+    // ex_request_block; the LSU does not duplicate their merge locally.
+    assign dmem_req_valid =
         !rst &&
         !ex_request_block &&
-        !mem_exception.valid &&
         request_slot_available &&
         ex_memory_access;
 
@@ -212,30 +198,6 @@ module rv32_lsu (
                 end
             endcase
         end
-    end
-
-    // MEM/WB candidate
-    always_comb begin
-        mem_wb_candidate = '0;
-
-        mem_wb_candidate.valid = // MEM阶段的指令有效且已经处理完成：本条指令进MEM阶段前有效，经过MEM处理后还是有效的，不是访存指令或者是访存指令且已经返回
-            ex_mem_q.valid &&
-            !mem_exception.valid && // 异常在MEM阶段产生trap_take，不进入WB
-            (
-                !mem_memory_access ||
-                response_fire
-            );
-
-        mem_wb_candidate.pc          = ex_mem_q.pc;
-        mem_wb_candidate.instruction = ex_mem_q.instruction;
-        mem_wb_candidate.pc_plus_4   = ex_mem_q.pc_plus_4;
-
-        mem_wb_candidate.exec_result = ex_mem_q.exec_result;
-        mem_wb_candidate.load_result = load_result;
-        mem_wb_candidate.rd_addr     = ex_mem_q.rd_addr;
-
-        mem_wb_candidate.wb_ctrl     = ex_mem_q.wb_ctrl;
-        mem_wb_candidate.exception   = mem_exception;
     end
 
     // Outstanding transaction state

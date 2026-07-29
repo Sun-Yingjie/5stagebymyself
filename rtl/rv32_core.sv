@@ -90,8 +90,6 @@ module rv32_core #(
     redirect_t  qualified_redirect;
     exception_t lsu_exception;
     exception_t final_mem_exception;
-    exception_t lsu_mem_exception_compat;
-    mem_wb_t    lsu_mem_wb_compat;
 
     // Stable execute-stage observation retained for protocol assertions.
     logic      ex_hold_valid_q;
@@ -297,16 +295,13 @@ module rv32_core #(
         .dmem_rsp_ready   (dmem_rsp_ready),
         .dmem_rsp_rdata   (dmem_rsp_rdata),
         .dmem_rsp_error   (dmem_rsp_error),
+        .response_fire    (lsu_response_fire),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
         .lsu_outstanding  (lsu_outstanding),
         .load_result      (lsu_load_result),
-        .lsu_exception    (lsu_exception),
-        .mem_wb_candidate (lsu_mem_wb_compat),
-        .mem_exception    (lsu_mem_exception_compat)
+        .lsu_exception    (lsu_exception)
     );
-
-    assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
 
     assign mret_redirect.valid  = mret_commit;
     assign mret_redirect.target = mret_commit ? mret_target : 32'b0;
