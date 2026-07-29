@@ -81,6 +81,7 @@ UNIT_NAMES=(
     ifu
     imm_gen
     lsu
+    mem_commit
     mdu
     pipeline_ctrl
     regfile

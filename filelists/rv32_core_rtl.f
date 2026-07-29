@@ -15,5 +15,6 @@ rtl/rv32_mdu.sv
 rtl/rv32_execute_stage.sv
 rtl/rv32_ifu.sv
 rtl/rv32_lsu.sv
+rtl/rv32_mem_commit.sv
 rtl/rv32_wbu.sv
 rtl/rv32_core.sv

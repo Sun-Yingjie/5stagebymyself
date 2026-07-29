@@ -59,7 +59,7 @@ BUILD_ROOT=/tmp/rv32-build scripts/run_regression.sh
 当前确定性 RTL 回归结果为：
 
 ```text
-17/17 unit TBs passed
+18/18 unit TBs passed
 Icarus core:    51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,
                  27/25 MDU req/rsp, 17 interrupts, 25528 checks
 Verilator core: 51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,

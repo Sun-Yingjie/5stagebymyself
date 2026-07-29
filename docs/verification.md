@@ -9,12 +9,12 @@ Spike 差分。各层结论边界独立，不能互相替代。
 
 ### 1.1 Unit TB
 
-Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 17 个：
+Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 18 个：
 
 ```text
 alu, branch_compare, csr_alu, csr_trap, csr_decoder, decoder,
-execute_stage, exu, forward_unit, idu, ifu, imm_gen, lsu, mdu,
-pipeline_ctrl, regfile, wbu
+execute_stage, exu, forward_unit, idu, ifu, imm_gen, lsu, mem_commit,
+mdu, pipeline_ctrl, regfile, wbu
 ```
 
 Unit TB 检查：
@@ -24,6 +24,7 @@ Unit TB 检查：
 - `mcycle/mcycleh/minstret/minstreth` 的自动更新、64 位进位、half write 和 commit 排除语义；
 - MDU 八种运算、32 次固定迭代、除零/有符号溢出、response hold、reset/kill；
 - WBU 四种写回来源、retire payload、reset/invalid 和 `x0` 写回观察语义；
+- MEM commit 的访存完成条件、异常优先级、动作无关 candidate、MRET 与边界 PC；
 - 流水控制优先级和各级 `LOAD/HOLD/CLEAR` 动作；
 - IFU/LSU 单笔事务、对齐、访问错误和 LSU outstanding 状态；
 - `mie/mip` WARL/MRO、三种 interrupt cause 与优先级、post-CSR/MRET effective-state preview、entry 和延后一拍的 interrupt 观察事件。

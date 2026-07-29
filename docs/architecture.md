@@ -67,6 +67,7 @@ rv32_core
 │   │   └── rv32_branch_compare
 │   └── rv32_mdu
 ├── rv32_lsu
+├── rv32_mem_commit
 ├── rv32_wbu
 ├── rv32_csr_trap
 │   └── rv32_csr_alu
@@ -74,9 +75,11 @@ rv32_core
 └── rv32_pipeline_ctrl
 ```
 
-`rv32_execute_stage` 封装单周期 EXU 与多周期 MDU 的协议协调；`rv32_wbu`
-统一形成写回数据、WB bus 和 retire 输出。最终 MEM/WB candidate 和同步异常优先级
-仍由 `rv32_core` 统一决定；LSU 内同名输出只是兼容接口，不是最终状态所有者。
+`rv32_execute_stage` 封装单周期 EXU 与多周期 MDU 的协议协调；
+`rv32_mem_commit` 合并最终同步异常，并形成动作无关的 MEM/WB candidate 与提交预览；
+`rv32_wbu` 统一形成写回数据、WB bus 和 retire 输出。MEM/WB 流水寄存器及真正的
+`commit_valid` 仍由 `rv32_core` 控制；LSU 内同名输出只是兼容接口，不是最终状态
+所有者。
 
 ## 4. 状态所有权
 

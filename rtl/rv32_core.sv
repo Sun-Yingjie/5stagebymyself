@@ -110,6 +110,7 @@ module rv32_core #(
     logic csr_access_valid;
     logic csr_access_illegal;
     logic ex_request_block;
+    logic mem_request_block;
     logic ex_request_wait;
     logic mem_memory_access;
     logic mem_stage_complete;
@@ -305,16 +306,7 @@ module rv32_core #(
         .mem_exception    (lsu_mem_exception_compat)
     );
 
-    // MEM result ownership and final synchronous exception merge
-    assign mem_memory_access =
-        ex_mem_q.valid &&
-        (
-            ex_mem_q.mem_ctrl.memory_read ||
-            ex_mem_q.mem_ctrl.memory_write
-        );
-
     assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
-    assign mem_stage_complete = !mem_memory_access || lsu_response_fire;
 
     assign mret_redirect.valid  = mret_commit;
     assign mret_redirect.target = mret_commit ? mret_target : 32'b0;
@@ -324,69 +316,33 @@ module rv32_core #(
         ex_mem_q.csr_ctrl.valid &&
         !ex_mem_q.exception.valid;
 
-    always_comb begin
-        final_mem_exception = '0;
-
-        if (ex_mem_q.valid) begin
-            if (ex_mem_q.exception.valid) begin
-                final_mem_exception = ex_mem_q.exception;
-            end else if (csr_access_illegal) begin
-                final_mem_exception.valid = 1'b1;
-                final_mem_exception.cause =
-                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
-                final_mem_exception.value = ex_mem_q.instruction;
-            end else if (lsu_exception.valid) begin
-                final_mem_exception = lsu_exception;
-            end
-        end
-    end
-
     assign ex_request_block =
-        (ex_mem_q.valid && final_mem_exception.valid) ||
-        interrupt_take ||
-        mret_commit;
-
-    always_comb begin
-        mem_wb_candidate = '0;
-
-        mem_wb_candidate.valid =
-            ex_mem_q.valid &&
-            mem_stage_complete &&
-            !final_mem_exception.valid;
-
-        mem_wb_candidate.pc          = ex_mem_q.pc;
-        mem_wb_candidate.instruction = ex_mem_q.instruction;
-        mem_wb_candidate.pc_plus_4   = ex_mem_q.pc_plus_4;
-        mem_wb_candidate.exec_result = ex_mem_q.exec_result;
-        mem_wb_candidate.load_result = lsu_load_result;
-        mem_wb_candidate.csr_read_data = csr_read_data;
-        mem_wb_candidate.rd_addr     = ex_mem_q.rd_addr;
-        mem_wb_candidate.wb_ctrl     = ex_mem_q.wb_ctrl;
-        mem_wb_candidate.exception   = final_mem_exception;
-    end
-
-    assign mem_commit_candidate =
-        !rst &&
-        ex_mem_q.valid &&
-        mem_stage_complete &&
-        !final_mem_exception.valid &&
-        mem_wb_candidate.valid;
+        mem_request_block || interrupt_take;
 
     assign commit_valid =
         mem_commit_candidate &&
         (mem_wb_action == PIPE_LOAD);
 
-    assign mret_commit =
-        mem_commit_candidate &&
-        ex_mem_q.mret;
-
-    assign effective_architectural_next_pc =
-        ex_mem_q.mret ? mret_target : ex_mem_q.architectural_next_pc;
-
-    assign boundary_resume_pc =
-        mem_commit_candidate
-            ? effective_architectural_next_pc
-            : resume_pc_q;
+    rv32_mem_commit u_mem_commit (
+        .rst                            (rst),
+        .ex_mem_q                       (ex_mem_q),
+        .lsu_response_fire              (lsu_response_fire),
+        .lsu_load_result                (lsu_load_result),
+        .lsu_exception                  (lsu_exception),
+        .csr_access_illegal             (csr_access_illegal),
+        .csr_read_data                  (csr_read_data),
+        .mret_target                    (mret_target),
+        .resume_pc                      (resume_pc_q),
+        .mem_memory_access              (mem_memory_access),
+        .mem_stage_complete             (mem_stage_complete),
+        .final_mem_exception            (final_mem_exception),
+        .mem_wb_candidate               (mem_wb_candidate),
+        .mem_commit_candidate           (mem_commit_candidate),
+        .mret_commit                    (mret_commit),
+        .effective_architectural_next_pc(effective_architectural_next_pc),
+        .boundary_resume_pc             (boundary_resume_pc),
+        .mem_request_block              (mem_request_block)
+    );
 
     assign pipeline_empty =
         !if_id_q.valid &&
