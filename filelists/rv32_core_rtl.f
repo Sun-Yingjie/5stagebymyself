@@ -14,4 +14,5 @@ rtl/rv32_exu.sv
 rtl/rv32_mdu.sv
 rtl/rv32_ifu.sv
 rtl/rv32_lsu.sv
+rtl/rv32_wbu.sv
 rtl/rv32_core.sv

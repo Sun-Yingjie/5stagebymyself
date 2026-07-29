@@ -146,7 +146,6 @@ module rv32_core #(
 
     logic [31:0] ex_mem_forward_value;
     logic [31:0] mem_wb_forward_value;
-    logic [31:0] wb_write_data;
     logic [31:0] lsu_load_result;
     logic [31:0] csr_read_data;
     logic [31:0] mret_target;
@@ -166,37 +165,18 @@ module rv32_core #(
     logic ex_mem_csr_read_enable;
     logic ex_mem_csr_write_enable;
 
-    // Writeback and retirement
-    always_comb begin
-        wb_write_data = '0;
-
-        case (mem_wb_q.wb_ctrl.writeback_select)
-            WB_EXEC:      wb_write_data = mem_wb_q.exec_result;
-            WB_LOAD:      wb_write_data = mem_wb_q.load_result;
-            WB_PC_PLUS_4: wb_write_data = mem_wb_q.pc_plus_4;
-            WB_CSR:       wb_write_data = mem_wb_q.csr_read_data;
-            default:      wb_write_data = '0;
-        endcase
-    end
-
-    always_comb begin
-        wb_bus = '0;
-
-        wb_bus.valid           = !rst && mem_wb_q.valid;
-        wb_bus.rd_write_enable = mem_wb_q.wb_ctrl.register_write;
-        wb_bus.rd_addr         = mem_wb_q.rd_addr;
-        wb_bus.rd_data         = wb_write_data;
-    end
-
-    assign retire_valid   = wb_bus.valid;
-    assign retire_pc      = mem_wb_q.pc;
-    assign retire_instr   = mem_wb_q.instruction;
-    assign retire_rd_we   =
-        retire_valid &&
-        wb_bus.rd_write_enable &&
-        (wb_bus.rd_addr != '0);
-    assign retire_rd_addr = wb_bus.rd_addr;
-    assign retire_rd_data = wb_bus.rd_data;
+    // Writeback and architectural retirement observation
+    rv32_wbu u_wbu (
+        .rst            (rst),
+        .mem_wb_q       (mem_wb_q),
+        .wb_bus         (wb_bus),
+        .retire_valid   (retire_valid),
+        .retire_pc      (retire_pc),
+        .retire_instr   (retire_instr),
+        .retire_rd_we   (retire_rd_we),
+        .retire_rd_addr (retire_rd_addr),
+        .retire_rd_data (retire_rd_data)
+    );
 
     // Forwarding datapath
     assign id_ex_result_late =
@@ -210,7 +190,7 @@ module rv32_core #(
     assign ex_mem_csr_read_enable = ex_mem_q.csr_ctrl.read_enable;
     assign ex_mem_csr_write_enable = ex_mem_q.csr_ctrl.write_enable;
 
-    assign mem_wb_forward_value = wb_write_data;
+    assign mem_wb_forward_value = wb_bus.rd_data;
 
     always_comb begin
         ex_mem_candidate = ex_mem_base_candidate;

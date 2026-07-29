@@ -30,9 +30,19 @@ class ArtifactLifecycleTest(unittest.TestCase):
             REPO_ROOT,
         )
         git = DIFF.git_provenance(REPO_ROOT)
+        expected_rtl_sources = [
+            line.strip()
+            for line in (REPO_ROOT / "filelists/rv32_core_rtl.f")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        ]
 
         self.assertEqual(rtl["filelist"]["path"], "filelists/rv32_core_rtl.f")
-        self.assertEqual(len(rtl["sources"]), 17)
+        self.assertEqual(
+            [item["path"] for item in rtl["sources"]],
+            expected_rtl_sources,
+        )
         self.assertIn("rtl/rv32_core.sv", {item["path"] for item in rtl["sources"]})
         self.assertEqual(
             {item["path"] for item in program_tb["sources"]},

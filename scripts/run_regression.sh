@@ -83,6 +83,7 @@ UNIT_NAMES=(
     mdu
     pipeline_ctrl
     regfile
+    wbu
 )
 unit_count=0
 unit_total="${#UNIT_NAMES[@]}"
