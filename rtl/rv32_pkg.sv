@@ -1,5 +1,5 @@
 package rv32_pkg;
-// opcode
+    // Opcodes
     localparam logic [6:0] OPCODE_LUI       = 7'b011_0111;
     localparam logic [6:0] OPCODE_AUIPC     = 7'b001_0111;
     localparam logic [6:0] OPCODE_JAL       = 7'b110_1111;
@@ -11,16 +11,16 @@ package rv32_pkg;
     localparam logic [6:0] OPCODE_OP_IMM    = 7'b001_0011;
     localparam logic [6:0] OPCODE_OP        = 7'b011_0011;
     localparam logic [6:0] OPCODE_SYSTEM    = 7'b111_0011;
-// full instruction encodings
+    // Full instruction encodings
     localparam logic [31:0] INSTRUCTION_ECALL  = 32'h0000_0073;
     localparam logic [31:0] INSTRUCTION_EBREAK = 32'h0010_0073;
     localparam logic [31:0] INSTRUCTION_MRET   = 32'h3020_0073;
     localparam logic [31:0] INSTRUCTION_WFI    = 32'h1050_0073;
-// funct7
+    // funct7 encodings
     localparam logic [6:0] FUNCT7_BASE      = 7'b000_0000;
     localparam logic [6:0] FUNCT7_MULDIV    = 7'b000_0001;
     localparam logic [6:0] FUNCT7_SUB_SRA   = 7'b010_0000;
-// funct3
+    // funct3 encodings
     // arithmetic logic operation
     localparam logic [2:0] FUNCT3_ADD_SUB   = 3'b000;
     localparam logic [2:0] FUNCT3_SLL       = 3'b001;
@@ -57,27 +57,50 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_CSRRWI    = 3'b101;
     localparam logic [2:0] FUNCT3_CSRRSI    = 3'b110;
     localparam logic [2:0] FUNCT3_CSRRCI    = 3'b111;
-// exception
-    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED = 32'd0;
-    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT = 32'd1;
-    localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION      = 32'd2;
-    localparam logic [31:0] EXCEPTION_CAUSE_BREAKPOINT               = 32'd3;
-    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED  = 32'd4;
-    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT        = 32'd5;
-    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED = 32'd6;
-    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT       = 32'd7;
-    localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE  = 32'd11;
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_SOFTWARE = 32'h8000_0003;
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_TIMER    = 32'h8000_0007;
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_EXTERNAL = 32'h8000_000b;
-// pipeline control
+    // Machine interrupt causes
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_SOFTWARE                = 32'h8000_0003;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_TIMER                   = 32'h8000_0007;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_EXTERNAL                = 32'h8000_000b;
+
+    // Synchronous exception causes
+    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED  = 32'd0;
+    localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ACCESS_FAULT        = 32'd1;
+    localparam logic [31:0] EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION             = 32'd2;
+    localparam logic [31:0] EXCEPTION_CAUSE_BREAKPOINT                      = 32'd3;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ADDRESS_MISALIGNED         = 32'd4;
+    localparam logic [31:0] EXCEPTION_CAUSE_LOAD_ACCESS_FAULT               = 32'd5;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED        = 32'd6;
+    localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT              = 32'd7;
+    localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE         = 32'd11;
+
+    // Machine CSR addresses
+    localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
+    localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
+    localparam logic [11:0] CSR_ADDR_MIE        = 12'h304;
+    localparam logic [11:0] CSR_ADDR_MTVEC      = 12'h305;
+    localparam logic [11:0] CSR_ADDR_MSCRATCH   = 12'h340;
+    localparam logic [11:0] CSR_ADDR_MEPC       = 12'h341;
+    localparam logic [11:0] CSR_ADDR_MCAUSE     = 12'h342;
+    localparam logic [11:0] CSR_ADDR_MTVAL      = 12'h343;
+    localparam logic [11:0] CSR_ADDR_MIP        = 12'h344;
+    localparam logic [11:0] CSR_ADDR_MCYCLE     = 12'hB00;
+    localparam logic [11:0] CSR_ADDR_MINSTRET   = 12'hB02;
+    localparam logic [11:0] CSR_ADDR_MCYCLEH    = 12'hB80;
+    localparam logic [11:0] CSR_ADDR_MINSTRETH  = 12'hB82;
+    localparam logic [11:0] CSR_ADDR_MVENDORID  = 12'hF11;
+    localparam logic [11:0] CSR_ADDR_MARCHID    = 12'hF12;
+    localparam logic [11:0] CSR_ADDR_MIMPID     = 12'hF13;
+    localparam logic [11:0] CSR_ADDR_MHARTID    = 12'hF14;
+    localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
+
+    // Pipeline control
     typedef enum logic [1:0] {  // how to update pipeline reg
         PIPE_LOAD           = 2'b00, // update
         PIPE_HOLD           = 2'b01, // keep
         PIPE_CLEAR          = 2'b10  // valid = 0
     } pipe_action_e;
 
-// fetch control
+    // Fetch control
     typedef enum logic [1:0] { // how to update pc reg
         FETCH_RESET         = 2'b00,    // back to RESET_VECTOR
         FETCH_HOLD          = 2'b01,    // keep current pc
@@ -85,7 +108,7 @@ package rv32_pkg;
         FETCH_REDIRECT      = 2'b11     // pc redirect
     } fetch_action_e;
 
-// decode control
+    // Decode control
     typedef enum logic [2:0] { // sel immediate extend
         IMM_NONE            = 3'b000,
         IMM_I               = 3'b001,
@@ -95,7 +118,7 @@ package rv32_pkg;
         IMM_J               = 3'b101
     } immediate_type_e;
 
-// execute control
+    // Execute control
     typedef enum logic [1:0] { // sel alu opa
         OPA_RS1             = 2'b00,
         OPA_PC              = 2'b01,
@@ -146,26 +169,6 @@ package rv32_pkg;
         BR_GEU              = 3'b110
     } branch_operation_e;
 
-// CSR control
-    localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
-    localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
-    localparam logic [11:0] CSR_ADDR_MIE        = 12'h304;
-    localparam logic [11:0] CSR_ADDR_MTVEC      = 12'h305;
-    localparam logic [11:0] CSR_ADDR_MSCRATCH   = 12'h340;
-    localparam logic [11:0] CSR_ADDR_MEPC       = 12'h341;
-    localparam logic [11:0] CSR_ADDR_MCAUSE     = 12'h342;
-    localparam logic [11:0] CSR_ADDR_MTVAL      = 12'h343;
-    localparam logic [11:0] CSR_ADDR_MIP        = 12'h344;
-    localparam logic [11:0] CSR_ADDR_MCYCLE     = 12'hB00;
-    localparam logic [11:0] CSR_ADDR_MINSTRET   = 12'hB02;
-    localparam logic [11:0] CSR_ADDR_MCYCLEH    = 12'hB80;
-    localparam logic [11:0] CSR_ADDR_MINSTRETH  = 12'hB82;
-    localparam logic [11:0] CSR_ADDR_MVENDORID  = 12'hF11;
-    localparam logic [11:0] CSR_ADDR_MARCHID    = 12'hF12;
-    localparam logic [11:0] CSR_ADDR_MIMPID     = 12'hF13;
-    localparam logic [11:0] CSR_ADDR_MHARTID    = 12'hF14;
-    localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
-
     typedef enum logic [1:0] { // select CSR read-modify-write operation
         CSR_WRITE           = 2'b00,
         CSR_SET             = 2'b01,
@@ -186,14 +189,14 @@ package rv32_pkg;
         FWD_MEM_WB          = 2'b10  // from mem/wb
     } forward_select_e;
 
-// memory control
+    // Memory control
     typedef enum logic [1:0] { // load/store width
         MEM_SIZE_BYTE       = 2'b00, // LB, LBU, SB
         MEM_SIZE_HALF       = 2'b01, // LH, LHU, SH
         MEM_SIZE_WORD       = 2'b10  // LW ,SW 
     } memory_size_e;
 
-// write back control
+    // Writeback control
     typedef enum logic [1:0] {  // sel write back source
         WB_EXEC             = 2'b00,
         WB_LOAD             = 2'b01,
@@ -201,7 +204,7 @@ package rv32_pkg;
         WB_CSR              = 2'b11
     } writeback_select_e;
 
-// stage need package
+    // Per-stage control packets
     typedef struct packed { // execute stage need
         operand_a_select_e operand_a_select;
         operand_b_select_e operand_b_select;
@@ -244,7 +247,7 @@ package rv32_pkg;
         logic [31:0] value;
     } exception_t;
 
-// pipeline reg package
+    // Pipeline-register packets
     typedef struct packed { // IF/ID reg
         logic        valid;
         logic [31:0] pc;

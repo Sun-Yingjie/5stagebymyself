@@ -5,6 +5,7 @@ module rv32_core #(
 ) (
     input  logic        clk,
     input  logic        rst,
+
     input  logic        irq_software,
     input  logic        irq_timer,
     input  logic        irq_external,
@@ -28,6 +29,7 @@ module rv32_core #(
     input  logic [31:0] dmem_rsp_rdata,
     input  logic        dmem_rsp_error,
 
+    // Optional architectural retirement trace interface.
     output logic        retire_valid,
     output logic [31:0] retire_pc,
     output logic [31:0] retire_instr,
@@ -35,11 +37,13 @@ module rv32_core #(
     output logic [4:0]  retire_rd_addr,
     output logic [31:0] retire_rd_data,
 
+    // Optional architectural trap observation interface.
     output logic        trap_valid,
     output logic [31:0] trap_pc,
     output logic [31:0] trap_cause,
     output logic [31:0] trap_value,
 
+    // Reserved coprocessor interface; fixed inactive in this core version.
     output logic        cp_req_valid,
     input  logic        cp_req_ready,
     output logic [31:0] cp_req_pc,
@@ -53,6 +57,12 @@ module rv32_core #(
 );
 
     import rv32_pkg::*;
+
+    // Pipeline-state naming convention:
+    //   *_q         : current registered state
+    //   *_d         : final next state after LOAD/HOLD/CLEAR selection
+    //   *_candidate : combinational value proposed by the preceding stage
+    // Only *_q is implemented as flip-flops. The other forms are combinational.
 
     // Pipeline state
     if_id_t  if_id_q;
@@ -257,7 +267,7 @@ module rv32_core #(
         end
     end
 
-    // Coprocessor is disabled in v0.1.
+    // Coprocessor is reserved but disabled in the frozen core architecture.
     assign cp_req_valid    = 1'b0;
     assign cp_req_pc       = '0;
     assign cp_req_instr    = '0;
@@ -546,6 +556,10 @@ module rv32_core #(
     );
 
     // Pipeline next-state selection
+    // Select the final next state of each pipeline register:
+    //   PIPE_LOAD  - accept the new candidate
+    //   PIPE_HOLD  - preserve the current registered state
+    //   PIPE_CLEAR - invalidate the pipeline entry and insert a bubble
     always_comb begin
         if_id_d  = if_id_q;
         id_ex_d  = id_ex_q;
