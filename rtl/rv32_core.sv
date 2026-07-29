@@ -75,7 +75,6 @@ module rv32_core #(
 
     ex_mem_t ex_mem_q;
     ex_mem_t ex_mem_d;
-    ex_mem_t ex_mem_candidate;
     ex_mem_t ex_mem_active_candidate;
 
     mem_wb_t mem_wb_q;
@@ -84,7 +83,6 @@ module rv32_core #(
 
     // Stage interconnect and global control
     wb_bus_t    wb_bus;
-    redirect_t  ex_raw_redirect;
     redirect_t  raw_redirect;
     redirect_t  trap_redirect;
     redirect_t  interrupt_redirect;
@@ -95,10 +93,8 @@ module rv32_core #(
     exception_t lsu_mem_exception_compat;
     mem_wb_t    lsu_mem_wb_compat;
 
-    // Preserve the complete EX candidate while ID/EX is held.
+    // Stable execute-stage observation retained for protocol assertions.
     logic      ex_hold_valid_q;
-    ex_mem_t   ex_mem_hold_q;
-    redirect_t ex_redirect_hold_q;
 
     fetch_action_e fetch_action;
     pipe_action_e  if_id_action;
@@ -189,17 +185,6 @@ module rv32_core #(
     assign mem_wb_forward_value = wb_bus.rd_data;
 
     always_comb begin
-        ex_mem_active_candidate = ex_mem_candidate;
-
-        if (ex_hold_valid_q) begin
-            ex_mem_active_candidate = ex_mem_hold_q;
-        end
-    end
-
-    assign raw_redirect =
-        ex_hold_valid_q ? ex_redirect_hold_q : ex_raw_redirect;
-
-    always_comb begin
         ex_mem_forward_value = '0;
 
         case (ex_mem_q.wb_ctrl.writeback_select)
@@ -279,10 +264,12 @@ module rv32_core #(
         .rs2_forward_select   (rs2_forward_select),
         .ex_mem_forward_value (ex_mem_forward_value),
         .mem_wb_forward_value (mem_wb_forward_value),
+        .id_ex_action         (id_ex_action),
         .ex_mem_action        (ex_mem_action),
         .execute_kill         (execute_kill),
-        .ex_mem_candidate     (ex_mem_candidate),
-        .ex_raw_redirect      (ex_raw_redirect),
+        .ex_mem_active_candidate(ex_mem_active_candidate),
+        .raw_redirect         (raw_redirect),
+        .ex_hold_valid        (ex_hold_valid_q),
         .ex_multicycle_wait   (ex_multicycle_wait),
         .mdu_idle             (mdu_idle),
         .mdu_req_valid        (mdu_req_valid),
@@ -565,9 +552,6 @@ module rv32_core #(
             ex_mem_q.valid <= 1'b0;
             mem_wb_q.valid <= 1'b0;
 
-            ex_hold_valid_q    <= 1'b0;
-            ex_mem_hold_q      <= '0;
-            ex_redirect_hold_q <= '0;
             resume_pc_q         <= RESET_VECTOR;
         end else begin
             if_id_q  <= if_id_d;
@@ -576,18 +560,6 @@ module rv32_core #(
             mem_wb_q <= mem_wb_d;
             resume_pc_q <= resume_pc_d;
 
-            if (
-                !ex_hold_valid_q &&
-                id_ex_q.valid &&
-                !id_ex_q.mdu_ctrl.valid &&
-                (id_ex_action == PIPE_HOLD)
-            ) begin
-                ex_hold_valid_q    <= 1'b1;
-                ex_mem_hold_q      <= ex_mem_candidate;
-                ex_redirect_hold_q <= ex_raw_redirect;
-            end else if (id_ex_action != PIPE_HOLD) begin
-                ex_hold_valid_q <= 1'b0;
-            end
         end
     end
 endmodule

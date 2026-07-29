@@ -84,7 +84,7 @@ rv32_core
 |---|---|---|
 | `x0`～`x31` | `rv32_regfile` | `x0` 恒为 0，写 `x0` 被抑制 |
 | IF/ID、ID/EX、EX/MEM、MEM/WB | `rv32_core` | 每级以 `valid` 区分真实指令与 bubble |
-| EX hold 快照 | `rv32_core` | request stall 时固定已完成前递的 EX 结果与 redirect |
+| EX hold 快照 | `rv32_execute_stage` | request stall 时固定已完成前递的 EX 结果与 redirect |
 | 最近提交边界的 resume PC | `rv32_core` | 为 empty-pipeline interrupt 保存下一架构 PC |
 | IMem pending/outstanding/stale | `rv32_ifu` | 维持取指请求并排空错误路径响应 |
 | DMem outstanding | `rv32_lsu` | 维护单笔数据事务生命周期 |

@@ -69,7 +69,11 @@ load 或 CSR 指令位于 EX，且下一条 ID 指令读取其 `rd` 时，`late_
 
 ### 3.3 EX hold 快照
 
-DMem request 受反压时，ID/EX 必须保持。但是 ID/EX 内保存的是译码时的寄存器值，前递源可能在等待期间离开流水。为保证 stalled request payload 稳定，Core 在第一次 HOLD 时保存已完成前递的 EX/MEM candidate 和 raw redirect；解除 HOLD 前始终使用该快照。M 指令由 MDU 自己捕获已前递操作数并保持 response，不进入普通 EX hold 快照。
+DMem request 受反压时，ID/EX 必须保持。但是 ID/EX 内保存的是译码时的寄存器值，
+前递源可能在等待期间离开流水。为保证 stalled request payload 稳定，
+`rv32_execute_stage` 在第一次 HOLD 时保存已完成前递的 EX/MEM candidate 和 raw
+redirect；解除 HOLD 前始终使用该快照。M 指令由 MDU 自己捕获已前递操作数并保持
+response，不进入普通 EX hold 快照。
 
 ### 3.4 RV32M 多周期执行
 
