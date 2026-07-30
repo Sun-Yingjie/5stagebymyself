@@ -337,10 +337,32 @@ def capture_text(command: list[str]) -> str:
     return completed.stdout.strip()
 
 
+def filelist_sources(filelist: Path) -> list[Path]:
+    sources: list[Path] = []
+    for line_number, raw_line in enumerate(
+        filelist.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.partition("#")[0].partition("//")[0].strip()
+        if not line:
+            continue
+        fields = shlex.split(line)
+        if len(fields) != 1 or fields[0].startswith(("-", "+")):
+            raise ValueError(
+                f"unsupported filelist syntax at {filelist}:{line_number}: "
+                f"{raw_line}"
+            )
+        source = Path(fields[0])
+        if not source.is_absolute():
+            source = ROOT / source
+        sources.append(source)
+    return sources
+
+
 def input_manifest() -> dict[str, str]:
-    paths: set[Path] = set()
+    core_rtl_filelist = ROOT / "filelists/rv32_core_rtl.f"
+    paths: set[Path] = {core_rtl_filelist}
+    paths.update(filelist_sources(core_rtl_filelist))
     for pattern in (
-        "rtl/*.sv",
         "filelists/*.f",
         "tb/core/*.sv",
         "tb/core/*.f",

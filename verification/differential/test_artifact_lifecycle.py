@@ -43,7 +43,13 @@ class ArtifactLifecycleTest(unittest.TestCase):
             [item["path"] for item in rtl["sources"]],
             expected_rtl_sources,
         )
-        self.assertIn("rtl/rv32_core.sv", {item["path"] for item in rtl["sources"]})
+        listed_rtl_sources = {item["path"] for item in rtl["sources"]}
+        discovered_rtl_sources = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in (REPO_ROOT / "rtl").rglob("*.sv")
+        }
+        self.assertIn("rtl/core/rv32_core.sv", listed_rtl_sources)
+        self.assertEqual(listed_rtl_sources, discovered_rtl_sources)
         self.assertEqual(
             {item["path"] for item in program_tb["sources"]},
             {"tb/program/tb_rv32_program.sv"},

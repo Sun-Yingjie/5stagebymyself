@@ -108,7 +108,7 @@ parameter，默认 16 KiB，接受任意正 4 KiB 倍数；已实际编译并运
 
 顶层已有 retire/trap 端口，但 DMem request 本身不携带发起指令的 PC/insn。为了不改
 RTL，TB 在 request handshake 时只读层次引用
-`dut.ex_mem_active_candidate.pc/instruction`，将真实副作用绑定到对应指令。该层次引用
+`dut.ex_mem_candidate.pc/instruction`，将真实副作用绑定到对应指令。该层次引用
 是当前验证适配层；若以后顶层增加正式 memory-commit 观察口，应替换这一引用。
 
 同拍 `retire_valid && trap_valid` 时，TB 固定先写 retire、再写 trap，与 D4 的
