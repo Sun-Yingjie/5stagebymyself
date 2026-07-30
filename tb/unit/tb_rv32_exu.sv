@@ -5,11 +5,9 @@ module tb_rv32_exu;
 
     import rv32_pkg::*;
 
-    id_ex_t         id_ex_q;
-    forward_select_e rs1_forward_select;
-    forward_select_e rs2_forward_select;
-    logic [31:0]     ex_mem_forward_value;
-    logic [31:0]     mem_wb_forward_value;
+    id_ex_t     id_ex_q;
+    logic [31:0] rs1_exec;
+    logic [31:0] rs2_exec;
 
     ex_mem_t  ex_mem_candidate;
     redirect_t raw_redirect;
@@ -19,34 +17,32 @@ module tb_rv32_exu;
     int unsigned error_count;
 
     rv32_exu dut (
-        .id_ex_q            (id_ex_q),
-        .rs1_forward_select (rs1_forward_select),
-        .rs2_forward_select (rs2_forward_select),
-        .ex_mem_forward_value(ex_mem_forward_value),
-        .mem_wb_forward_value(mem_wb_forward_value),
-        .ex_mem_candidate   (ex_mem_candidate),
-        .raw_redirect       (raw_redirect)
+        .id_ex_q          (id_ex_q),
+        .rs1_exec         (rs1_exec),
+        .rs2_exec         (rs2_exec),
+        .ex_mem_candidate (ex_mem_candidate),
+        .raw_redirect     (raw_redirect)
     );
 
     initial begin
         error_count = 0;
 
         test_basic_add();
-        test_mixed_forwarding();
-        test_reverse_forwarding();
-        test_csr_register_source_forwarding();
+        test_mixed_resolved_operands();
+        test_reverse_resolved_operands();
+        test_csr_register_source_operand();
         test_csr_immediate_source();
         test_exception_clears_csr_control();
         test_mret_metadata();
         test_pc_immediate_operands();
         test_zero_immediate_operands();
-        test_store_address_and_data_forwarding();
-        test_taken_branch_with_forwarding();
+        test_store_address_and_data_operands();
+        test_taken_branch_with_resolved_operands();
         test_taken_branch_address_misaligned();
         test_not_taken_branch();
         test_jal_redirect();
         test_jal_address_misaligned();
-        test_jalr_forwarding_and_alignment();
+        test_jalr_operand_and_alignment();
         test_jalr_address_misaligned();
         test_byte_address_alignment();
         test_half_address_alignment();
@@ -71,12 +67,10 @@ module tb_rv32_exu;
 
     task automatic set_defaults;
         begin
-            id_ex_q              = '0;
-            rs1_forward_select   = FWD_REG;
-            rs2_forward_select   = FWD_REG;
-            ex_mem_forward_value = 32'b0;
-            mem_wb_forward_value = 32'b0;
-            expected_candidate   = '0;
+            id_ex_q            = '0;
+            rs1_exec           = 32'b0;
+            rs2_exec           = 32'b0;
+            expected_candidate = '0;
         end
     endtask
 
@@ -160,7 +154,7 @@ module tb_rv32_exu;
         end
     endtask
 
-    task automatic test_csr_register_source_forwarding;
+    task automatic test_csr_register_source_operand;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -168,7 +162,7 @@ module tb_rv32_exu;
                 {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
                 5'd1
             );
-            id_ex_q.rs1_data = 32'h1111_1111;
+            rs1_exec = 32'h1111_1111;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
@@ -177,19 +171,17 @@ module tb_rv32_exu;
 
             build_expected_candidate(32'h1111_1111, 32'b0);
             expected_candidate.csr_source = 32'h1111_1111;
-            check_outputs(1'b0, 32'b0, "CSR source uses register value");
+            check_outputs(1'b0, 32'b0, "CSR source uses resolved rs1 value");
 
-            rs1_forward_select = FWD_EX_MEM;
-            ex_mem_forward_value = 32'h2222_2222;
+            rs1_exec = 32'h2222_2222;
             build_expected_candidate(32'h2222_2222, 32'b0);
             expected_candidate.csr_source = 32'h2222_2222;
-            check_outputs(1'b0, 32'b0, "CSR source uses EX/MEM forwarding");
+            check_outputs(1'b0, 32'b0, "CSR source tracks resolved rs1 changes");
 
-            rs1_forward_select = FWD_MEM_WB;
-            mem_wb_forward_value = 32'h3333_3333;
+            rs1_exec = 32'h3333_3333;
             build_expected_candidate(32'h3333_3333, 32'b0);
             expected_candidate.csr_source = 32'h3333_3333;
-            check_outputs(1'b0, 32'b0, "CSR source uses MEM/WB forwarding");
+            check_outputs(1'b0, 32'b0, "CSR source consumes final resolved rs1");
         end
     endtask
 
@@ -201,22 +193,21 @@ module tb_rv32_exu;
                 {12'h305, 5'd31, FUNCT3_CSRRWI, 5'd2, OPCODE_SYSTEM},
                 5'd2
             );
-            id_ex_q.rs1_data = 32'hffff_ffff;
+            rs1_exec = 32'hffff_ffff;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.use_immediate = 1'b1;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
             id_ex_q.csr_ctrl.write_enable = 1'b1;
             id_ex_q.csr_address = 12'h305;
-            rs1_forward_select = FWD_EX_MEM;
-            ex_mem_forward_value = 32'haaaa_aaaa;
+            rs1_exec = 32'haaaa_aaaa;
 
             build_expected_candidate(32'haaaa_aaaa, 32'b0);
             expected_candidate.csr_source = 32'd31;
             check_outputs(
                 1'b0,
                 32'b0,
-                "CSR immediate source is zero-extended and ignores forwarding"
+                "CSR immediate source is zero-extended and ignores resolved rs1"
             );
         end
     endtask
@@ -229,7 +220,7 @@ module tb_rv32_exu;
                 {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
                 5'd1
             );
-            id_ex_q.rs1_data = 32'hdead_beef;
+            rs1_exec = 32'hdead_beef;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
@@ -296,8 +287,8 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            id_ex_q.rs1_data = 32'd10;
-            id_ex_q.rs2_data = 32'd20;
+            rs1_exec = 32'd10;
+            rs2_exec = 32'd20;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -310,7 +301,7 @@ module tb_rv32_exu;
         end
     endtask
 
-    task automatic test_mixed_forwarding;
+    task automatic test_mixed_resolved_operands;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -319,27 +310,22 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            id_ex_q.rs1_data = 32'haaaa_aaaa;
-            id_ex_q.rs2_data = 32'hbbbb_bbbb;
+            rs1_exec = 32'd16;
+            rs2_exec = 32'd3;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.alu_operation = ALU_SUB;
-
-            rs1_forward_select   = FWD_EX_MEM;
-            rs2_forward_select   = FWD_MEM_WB;
-            ex_mem_forward_value = 32'd16;
-            mem_wb_forward_value = 32'd3;
 
             build_expected_candidate(32'd13, 32'd3);
             check_outputs(
                 1'b0,
                 32'b0,
-                "EX/MEM forwards rs1 and MEM/WB forwards rs2"
+                "EXU consumes distinct resolved rs1 and rs2 values"
             );
         end
     endtask
 
-    task automatic test_reverse_forwarding;
+    task automatic test_reverse_resolved_operands;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -348,22 +334,17 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            id_ex_q.rs1_data = 32'haaaa_aaaa;
-            id_ex_q.rs2_data = 32'hbbbb_bbbb;
+            rs1_exec = 32'd20;
+            rs2_exec = 32'd5;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.alu_operation = ALU_SUB;
-
-            rs1_forward_select   = FWD_MEM_WB;
-            rs2_forward_select   = FWD_EX_MEM;
-            ex_mem_forward_value = 32'd5;
-            mem_wb_forward_value = 32'd20;
 
             build_expected_candidate(32'd15, 32'd5);
             check_outputs(
                 1'b0,
                 32'b0,
-                "MEM/WB forwards rs1 and EX/MEM forwards rs2"
+                "EXU preserves resolved operand ordering"
             );
         end
     endtask
@@ -408,7 +389,7 @@ module tb_rv32_exu;
         end
     endtask
 
-    task automatic test_store_address_and_data_forwarding;
+    task automatic test_store_address_and_data_operands;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -417,8 +398,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'haaaa_aaaa;
-            id_ex_q.rs2_data = 32'hbbbb_bbbb;
+            rs1_exec = 32'h0000_1000;
+            rs2_exec = 32'hdead_beef;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0010;
@@ -427,21 +408,16 @@ module tb_rv32_exu;
             id_ex_q.ex_ctrl.alu_operation = ALU_ADD;
             id_ex_q.mem_ctrl.memory_write = 1'b1;
 
-            rs1_forward_select   = FWD_EX_MEM;
-            rs2_forward_select   = FWD_MEM_WB;
-            ex_mem_forward_value = 32'h0000_1000;
-            mem_wb_forward_value = 32'hdead_beef;
-
             build_expected_candidate(32'h0000_1010, 32'hdead_beef);
             check_outputs(
                 1'b0,
                 32'b0,
-                "store address and data use forwarded operands"
+                "store address and data use resolved operands"
             );
         end
     endtask
 
-    task automatic test_taken_branch_with_forwarding;
+    task automatic test_taken_branch_with_resolved_operands;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -450,8 +426,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'd1;
-            id_ex_q.rs2_data = 32'd2;
+            rs1_exec = 32'd7;
+            rs2_exec = 32'd7;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0040;
@@ -459,17 +435,12 @@ module tb_rv32_exu;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
             id_ex_q.ex_ctrl.branch_operation = BR_EQ;
 
-            rs1_forward_select   = FWD_EX_MEM;
-            rs2_forward_select   = FWD_MEM_WB;
-            ex_mem_forward_value = 32'd7;
-            mem_wb_forward_value = 32'd7;
-
             build_expected_candidate(32'h0000_0240, 32'd7);
             expected_candidate.architectural_next_pc = 32'h0000_0240;
             check_outputs(
                 1'b1,
                 32'h0000_0240,
-                "taken branch compares forwarded operands"
+                "taken branch compares resolved operands"
             );
         end
     endtask
@@ -483,8 +454,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'd9;
-            id_ex_q.rs2_data = 32'd9;
+            rs1_exec = 32'd9;
+            rs2_exec = 32'd9;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'd2;
@@ -518,8 +489,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'd7;
-            id_ex_q.rs2_data = 32'd8;
+            rs1_exec = 32'd7;
+            rs2_exec = 32'd8;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0002;
@@ -587,7 +558,7 @@ module tb_rv32_exu;
         end
     endtask
 
-    task automatic test_jalr_forwarding_and_alignment;
+    task automatic test_jalr_operand_and_alignment;
         begin
             set_defaults();
             set_instruction_metadata(
@@ -596,7 +567,7 @@ module tb_rv32_exu;
                 5'd1
             );
 
-            id_ex_q.rs1_data = 32'haaaa_aaaa;
+            rs1_exec = 32'h0000_1001;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.immediate = 32'd4;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -606,15 +577,12 @@ module tb_rv32_exu;
             id_ex_q.wb_ctrl.register_write = 1'b1;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
 
-            rs1_forward_select   = FWD_EX_MEM;
-            ex_mem_forward_value = 32'h0000_1001;
-
             build_expected_candidate(32'h0000_1005, 32'b0);
             expected_candidate.architectural_next_pc = 32'h0000_1004;
             check_outputs(
                 1'b1,
                 32'h0000_1004,
-                "aligned JALR uses forwarded rs1 and clears target bit zero"
+                "aligned JALR uses resolved rs1 and clears target bit zero"
             );
         end
     endtask
@@ -628,7 +596,7 @@ module tb_rv32_exu;
                 5'd1
             );
 
-            id_ex_q.rs1_data = 32'h0000_1003;
+            rs1_exec = 32'h0000_1003;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.immediate = 32'd4;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -664,7 +632,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            id_ex_q.rs1_data = 32'h0000_1001;
+            rs1_exec = 32'h0000_1001;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -694,7 +662,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            id_ex_q.rs1_data = 32'h0000_1003;
+            rs1_exec = 32'h0000_1003;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -717,7 +685,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            id_ex_q.rs1_data = 32'h0000_1002;
+            rs1_exec = 32'h0000_1002;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -744,7 +712,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            id_ex_q.rs1_data = 32'h0000_1002;
+            rs1_exec = 32'h0000_1002;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -774,8 +742,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'h0000_1002;
-            id_ex_q.rs2_data = 32'hdead_beef;
+            rs1_exec = 32'h0000_1002;
+            rs2_exec = 32'hdead_beef;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -803,8 +771,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            id_ex_q.rs1_data = 32'h0000_1001;
-            id_ex_q.rs2_data = 32'hdead_beef;
+            rs1_exec = 32'h0000_1001;
+            rs2_exec = 32'hdead_beef;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;

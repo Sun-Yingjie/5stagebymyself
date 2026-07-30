@@ -183,10 +183,10 @@ package rv32_pkg;
         logic           write_enable;
     } csr_ctrl_t;
 
-    typedef enum logic [1:0] { // sel rs source
-        FWD_REG             = 2'b00, // from regfile
-        FWD_EX_MEM          = 2'b01, // from ex/mem
-        FWD_MEM_WB          = 2'b10  // from mem/wb
+    typedef enum logic [1:0] { // EX operand forwarding source
+        FWD_REG             = 2'b00, // use ID/EX-captured register operand
+        FWD_EX_MEM          = 2'b01, // use registered EX/MEM producer
+        FWD_MEM_WB          = 2'b10  // use registered MEM/WB producer
     } forward_select_e;
 
     // Memory control

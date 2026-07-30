@@ -1,11 +1,7 @@
 module rv32_exu (
     input rv32_pkg::id_ex_t id_ex_q,
-    input rv32_pkg::forward_select_e rs1_forward_select,
-    input rv32_pkg::forward_select_e rs2_forward_select,
-    input logic [31:0] ex_mem_forward_value,
-    input logic [31:0] mem_wb_forward_value,
-    output logic [31:0] rs1_exec,
-    output logic [31:0] rs2_exec,
+    input logic [31:0] rs1_exec,
+    input logic [31:0] rs2_exec,
     output rv32_pkg::ex_mem_t ex_mem_candidate,
     output rv32_pkg::redirect_t raw_redirect
 );
@@ -28,24 +24,6 @@ assign alu_operation =
 
 assign branch_operation =
     branch_operation_e'(id_ex_q.ex_ctrl.branch_operation);
-
-    always_comb begin
-        case (rs1_forward_select)
-            FWD_REG: rs1_exec = id_ex_q.rs1_data;
-            FWD_EX_MEM: rs1_exec = ex_mem_forward_value;
-            FWD_MEM_WB: rs1_exec = mem_wb_forward_value;
-            default: rs1_exec = id_ex_q.rs1_data;
-        endcase
-    end
-
-    always_comb begin
-        case (rs2_forward_select)
-            FWD_REG: rs2_exec = id_ex_q.rs2_data;
-            FWD_EX_MEM: rs2_exec = ex_mem_forward_value;
-            FWD_MEM_WB: rs2_exec = mem_wb_forward_value;
-            default: rs2_exec = id_ex_q.rs2_data;
-        endcase
-    end
 
     always_comb begin
         case (id_ex_q.ex_ctrl.operand_a_select)

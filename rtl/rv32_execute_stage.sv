@@ -5,8 +5,8 @@ module rv32_execute_stage (
     input  rv32_pkg::id_ex_t             id_ex_q,
     input  rv32_pkg::forward_select_e    rs1_forward_select,
     input  rv32_pkg::forward_select_e    rs2_forward_select,
-    input  logic [31:0]                  ex_mem_forward_value,
-    input  logic [31:0]                  mem_wb_forward_value,
+    input  rv32_pkg::ex_mem_t            ex_mem_q,
+    input  logic [31:0]                  mem_wb_forward_data,
 
     input  rv32_pkg::pipe_action_e       id_ex_action,
     input  rv32_pkg::pipe_action_e       ex_mem_action,
@@ -36,20 +36,55 @@ module rv32_execute_stage (
     redirect_t      ex_redirect_hold_q;
     logic           ex_hold_valid_q;
     logic           m_ex_valid;
+    logic [31:0]    ex_mem_forward_data;
     logic [31:0]    rs1_exec;
     logic [31:0]    rs2_exec;
     mdu_operation_e mdu_req_operation;
 
+    // The forwarding unit chooses the producer; this stage resolves both
+    // operands once so the single-cycle EXU and multicycle MDU see the same data.
+    always_comb begin
+        ex_mem_forward_data = '0;
+
+        case (ex_mem_q.wb_ctrl.writeback_select)
+            WB_EXEC: begin
+                ex_mem_forward_data = ex_mem_q.exec_result;
+            end
+
+            WB_PC_PLUS_4: begin
+                ex_mem_forward_data = ex_mem_q.pc_plus_4;
+            end
+
+            default: begin
+                ex_mem_forward_data = '0;
+            end
+        endcase
+    end
+
+    always_comb begin
+        case (rs1_forward_select)
+            FWD_REG:    rs1_exec = id_ex_q.rs1_data;
+            FWD_EX_MEM: rs1_exec = ex_mem_forward_data;
+            FWD_MEM_WB: rs1_exec = mem_wb_forward_data;
+            default:    rs1_exec = id_ex_q.rs1_data;
+        endcase
+    end
+
+    always_comb begin
+        case (rs2_forward_select)
+            FWD_REG:    rs2_exec = id_ex_q.rs2_data;
+            FWD_EX_MEM: rs2_exec = ex_mem_forward_data;
+            FWD_MEM_WB: rs2_exec = mem_wb_forward_data;
+            default:    rs2_exec = id_ex_q.rs2_data;
+        endcase
+    end
+
     rv32_exu u_exu (
-        .id_ex_q             (id_ex_q),
-        .rs1_forward_select  (rs1_forward_select),
-        .rs2_forward_select  (rs2_forward_select),
-        .ex_mem_forward_value(ex_mem_forward_value),
-        .mem_wb_forward_value(mem_wb_forward_value),
-        .rs1_exec            (rs1_exec),
-        .rs2_exec            (rs2_exec),
-        .ex_mem_candidate    (ex_mem_base_candidate),
-        .raw_redirect        (ex_raw_redirect)
+        .id_ex_q          (id_ex_q),
+        .rs1_exec         (rs1_exec),
+        .rs2_exec         (rs2_exec),
+        .ex_mem_candidate (ex_mem_base_candidate),
+        .raw_redirect     (ex_raw_redirect)
     );
 
     assign m_ex_valid =

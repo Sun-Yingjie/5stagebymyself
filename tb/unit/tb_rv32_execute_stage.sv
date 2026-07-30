@@ -10,8 +10,8 @@ module tb_rv32_execute_stage;
     id_ex_t          id_ex_q;
     forward_select_e rs1_forward_select;
     forward_select_e rs2_forward_select;
-    logic [31:0]     ex_mem_forward_value;
-    logic [31:0]     mem_wb_forward_value;
+    ex_mem_t         ex_mem_q;
+    logic [31:0]     mem_wb_forward_data;
     pipe_action_e    id_ex_action;
     pipe_action_e    ex_mem_action;
     logic            execute_kill;
@@ -38,8 +38,8 @@ module tb_rv32_execute_stage;
         .id_ex_q             (id_ex_q),
         .rs1_forward_select  (rs1_forward_select),
         .rs2_forward_select  (rs2_forward_select),
-        .ex_mem_forward_value(ex_mem_forward_value),
-        .mem_wb_forward_value(mem_wb_forward_value),
+        .ex_mem_q            (ex_mem_q),
+        .mem_wb_forward_data (mem_wb_forward_data),
         .id_ex_action        (id_ex_action),
         .ex_mem_action       (ex_mem_action),
         .execute_kill        (execute_kill),
@@ -84,8 +84,8 @@ module tb_rv32_execute_stage;
             id_ex_q              = '0;
             rs1_forward_select   = FWD_REG;
             rs2_forward_select   = FWD_REG;
-            ex_mem_forward_value = '0;
-            mem_wb_forward_value = '0;
+            ex_mem_q             = '0;
+            mem_wb_forward_data  = '0;
             id_ex_action         = PIPE_LOAD;
             ex_mem_action        = PIPE_LOAD;
             execute_kill         = 1'b0;
@@ -276,11 +276,12 @@ module tb_rv32_execute_stage;
             id_ex_q.mem_ctrl.memory_size     = MEM_SIZE_WORD;
             id_ex_q.wb_ctrl.register_write   = 1'b1;
             id_ex_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
-            rs1_forward_select   = FWD_EX_MEM;
-            rs2_forward_select   = FWD_MEM_WB;
-            ex_mem_forward_value = 32'h0000_0500;
-            mem_wb_forward_value = 32'habcd_ef01;
-            id_ex_action         = PIPE_HOLD;
+            rs1_forward_select = FWD_EX_MEM;
+            rs2_forward_select = FWD_MEM_WB;
+            ex_mem_q.wb_ctrl.writeback_select = WB_EXEC;
+            ex_mem_q.exec_result = 32'h0000_0500;
+            mem_wb_forward_data = 32'habcd_ef01;
+            id_ex_action = PIPE_HOLD;
 
             build_expected_ex_packet(
                 32'h0000_0514,
@@ -316,8 +317,10 @@ module tb_rv32_execute_stage;
             id_ex_q.rs2_data    = 32'h4444_4444;
             id_ex_q.immediate   = 32'h0000_0024;
             id_ex_q.rd_addr     = 5'd2;
-            ex_mem_forward_value = 32'h0000_0900;
-            mem_wb_forward_value = 32'h1234_5678;
+            rs1_forward_select = FWD_REG;
+            rs2_forward_select = FWD_EX_MEM;
+            ex_mem_q.exec_result = 32'h0000_0900;
+            mem_wb_forward_data = 32'h1234_5678;
 
             build_expected_ex_packet(
                 32'h0000_0924,
@@ -340,6 +343,8 @@ module tb_rv32_execute_stage;
                 @(negedge clk);
             end
 
+            rs1_forward_select = FWD_EX_MEM;
+            rs2_forward_select = FWD_MEM_WB;
             id_ex_action = PIPE_LOAD;
             #1ns;
             check_condition(
@@ -444,6 +449,65 @@ module tb_rv32_execute_stage;
             id_ex_q.wb_ctrl.register_write   = 1'b1;
             id_ex_q.wb_ctrl.writeback_select = WB_EXEC;
             id_ex_action = action;
+        end
+    endtask
+
+    task automatic test_forward_operand_sources;
+        begin
+            case_count++;
+            @(negedge clk);
+
+            drive_simple_add(
+                32'h0000_0680,
+                32'h0020_81b3,
+                32'd11,
+                32'd13,
+                5'd3,
+                PIPE_LOAD
+            );
+            #1ns;
+            check_condition(
+                (ex_mem_active_candidate.exec_result == 32'd24) &&
+                (ex_mem_active_candidate.store_data == 32'd13),
+                "operand mux: FWD_REG did not use ID/EX-captured operands"
+            );
+
+            rs1_forward_select = FWD_EX_MEM;
+            rs2_forward_select = FWD_MEM_WB;
+            ex_mem_q.wb_ctrl.writeback_select = WB_EXEC;
+            ex_mem_q.exec_result = 32'd40;
+            mem_wb_forward_data = 32'd3;
+            #1ns;
+            check_condition(
+                (ex_mem_active_candidate.exec_result == 32'd43) &&
+                (ex_mem_active_candidate.store_data == 32'd3),
+                "operand mux: mixed EX/MEM WB_EXEC and MEM/WB sources failed"
+            );
+
+            rs1_forward_select = FWD_EX_MEM;
+            rs2_forward_select = FWD_REG;
+            ex_mem_q.wb_ctrl.writeback_select = WB_PC_PLUS_4;
+            ex_mem_q.pc_plus_4 = 32'd100;
+            #1ns;
+            check_condition(
+                (ex_mem_active_candidate.exec_result == 32'd113) &&
+                (ex_mem_active_candidate.store_data == 32'd13),
+                "operand mux: EX/MEM WB_PC_PLUS_4 source failed"
+            );
+
+            rs1_forward_select = FWD_MEM_WB;
+            rs2_forward_select = FWD_EX_MEM;
+            ex_mem_q.wb_ctrl.writeback_select = WB_EXEC;
+            ex_mem_q.exec_result = 32'd5;
+            mem_wb_forward_data = 32'd20;
+            #1ns;
+            check_condition(
+                (ex_mem_active_candidate.exec_result == 32'd25) &&
+                (ex_mem_active_candidate.store_data == 32'd5),
+                "operand mux: mixed MEM/WB and EX/MEM sources failed"
+            );
+
+            clear_inputs();
         end
     endtask
 
@@ -654,8 +718,9 @@ module tb_rv32_execute_stage;
             id_ex_q.wb_ctrl.writeback_select = WB_EXEC;
             rs1_forward_select   = rs1_select;
             rs2_forward_select   = rs2_select;
-            ex_mem_forward_value = ex_mem_value;
-            mem_wb_forward_value = mem_wb_value;
+            ex_mem_q.wb_ctrl.writeback_select = WB_EXEC;
+            ex_mem_q.exec_result = ex_mem_value;
+            mem_wb_forward_data = mem_wb_value;
             id_ex_action         = PIPE_HOLD;
             ex_mem_action        = PIPE_HOLD;
         end
@@ -705,8 +770,8 @@ module tb_rv32_execute_stage;
             );
 
             @(negedge clk);
-            ex_mem_forward_value = 32'd11;
-            mem_wb_forward_value = 32'd13;
+            ex_mem_q.exec_result = 32'd11;
+            mem_wb_forward_data = 32'd13;
             #1ns;
 
             wait_cycles = 0;
@@ -939,6 +1004,7 @@ module tb_rv32_execute_stage;
         reset_dut();
         test_single_cycle_passthrough();
         test_single_cycle_redirect();
+        test_forward_operand_sources();
         test_ex_hold_snapshot();
         test_global_hold_clear_contract();
         test_mdu_forwarding_hold_and_consume();

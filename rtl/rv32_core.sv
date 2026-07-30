@@ -138,8 +138,6 @@ module rv32_core #(
     logic        mdu_idle;
     logic        mdu_kill;
 
-    logic [31:0] ex_mem_forward_value;
-    logic [31:0] mem_wb_forward_value;
     logic [31:0] lsu_load_result;
     logic [31:0] csr_read_data;
     logic [31:0] mret_target;
@@ -170,7 +168,7 @@ module rv32_core #(
         .retire_rd_data (retire_rd_data)
     );
 
-    // Forwarding datapath
+    // Forwarding control metadata
     assign id_ex_result_late =
         id_ex_q.mem_ctrl.memory_read || id_ex_q.csr_ctrl.valid;
     assign ex_mem_register_write = ex_mem_q.wb_ctrl.register_write;
@@ -181,26 +179,6 @@ module rv32_core #(
         csr_operation_e'(ex_mem_q.csr_ctrl.operation);
     assign ex_mem_csr_read_enable = ex_mem_q.csr_ctrl.read_enable;
     assign ex_mem_csr_write_enable = ex_mem_q.csr_ctrl.write_enable;
-
-    assign mem_wb_forward_value = wb_bus.rd_data;
-
-    always_comb begin
-        ex_mem_forward_value = '0;
-
-        case (ex_mem_q.wb_ctrl.writeback_select)
-            WB_EXEC: begin
-                ex_mem_forward_value = ex_mem_q.exec_result;
-            end
-
-            WB_PC_PLUS_4: begin
-                ex_mem_forward_value = ex_mem_q.pc_plus_4;
-            end
-
-            default: begin
-                ex_mem_forward_value = '0;
-            end
-        endcase
-    end
 
     // Frontend acceptance
     assign if_id_ready = (if_id_action == PIPE_LOAD);
@@ -263,8 +241,8 @@ module rv32_core #(
         .id_ex_q                 (id_ex_q),
         .rs1_forward_select      (rs1_forward_select),
         .rs2_forward_select      (rs2_forward_select),
-        .ex_mem_forward_value    (ex_mem_forward_value),
-        .mem_wb_forward_value    (mem_wb_forward_value),
+        .ex_mem_q                (ex_mem_q),
+        .mem_wb_forward_data     (wb_bus.rd_data),
         .id_ex_action            (id_ex_action),
         .ex_mem_action           (ex_mem_action),
         .execute_kill            (execute_kill),
