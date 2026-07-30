@@ -9,7 +9,7 @@ module rv32_core #(
     input  logic        irq_software,
     input  logic        irq_timer,
     input  logic        irq_external,
-
+    // Core <-> instruction-memory interface
     output logic        imem_req_valid,
     input  logic        imem_req_ready,
     output logic [31:0] imem_req_addr,
@@ -17,7 +17,7 @@ module rv32_core #(
     output logic        imem_rsp_ready,
     input  logic [31:0] imem_rsp_data,
     input  logic        imem_rsp_error,
-
+    // Core <-> data-memory interface
     output logic        dmem_req_valid,
     input  logic        dmem_req_ready,
     output logic        dmem_req_write,
@@ -75,7 +75,7 @@ module rv32_core #(
 
     ex_mem_t ex_mem_q;
     ex_mem_t ex_mem_d;
-    ex_mem_t ex_mem_active_candidate;
+    ex_mem_t ex_mem_candidate;
 
     mem_wb_t mem_wb_q;
     mem_wb_t mem_wb_d;
@@ -83,28 +83,29 @@ module rv32_core #(
 
     // Stage interconnect and global control
     wb_bus_t    wb_bus;
-    redirect_t  raw_redirect;
-    redirect_t  trap_redirect;
-    redirect_t  interrupt_redirect;
-    redirect_t  mret_redirect;
-    redirect_t  qualified_redirect;
-    exception_t lsu_exception;
-    exception_t final_mem_exception;
+    redirect_t  raw_redirect;       // P3: EX-stage branch/JAL/JALR redirect
+    redirect_t  trap_redirect;      // P0: synchronous-trap redirect at the MEM commit boundary
+    redirect_t  interrupt_redirect; // P1: software/timer/external interrupt redirect
+    redirect_t  mret_redirect;      // P2: committed MRET redirect
+    redirect_t  qualified_redirect; // Selected redirect after global priority arbitration
+    exception_t lsu_exception;      // LSU load/store access fault
+    exception_t final_mem_exception;// Final synchronous exception selected at MEM commit
 
-    // Stable execute-stage observation retained for protocol assertions.
+    // Execute-stage hold observation retained for Core-TB protocol assertions.
     logic ex_hold_valid;
 
-    fetch_action_e fetch_action;
-    pipe_action_e  if_id_action;
+    fetch_action_e fetch_action;    // reset/hold/sequential/redirect
+    pipe_action_e  if_id_action;    // load/hold/clear
     pipe_action_e  id_ex_action;
     pipe_action_e  ex_mem_action;
     pipe_action_e  mem_wb_action;
 
+    // Select each EX operand from its ID/EX-captured value, EX/MEM, or MEM/WB.
     forward_select_e rs1_forward_select;
     forward_select_e rs2_forward_select;
 
-    logic fetch_response_available;
-    logic late_result_hazard;
+    logic fetch_response_available; // Valid, non-stale IMem response available to the IFU
+    logic late_result_hazard;       // Load-use or CSR-use hazard
     logic csr_access_valid;
     logic csr_access_illegal;
     logic ex_request_block;
@@ -267,7 +268,7 @@ module rv32_core #(
         .id_ex_action            (id_ex_action),
         .ex_mem_action           (ex_mem_action),
         .execute_kill            (execute_kill),
-        .ex_mem_active_candidate (ex_mem_active_candidate),
+        .ex_mem_active_candidate (ex_mem_candidate),
         .raw_redirect            (raw_redirect),
         .ex_hold_valid           (ex_hold_valid),
         .ex_multicycle_wait      (ex_multicycle_wait),
@@ -283,7 +284,7 @@ module rv32_core #(
     rv32_lsu u_lsu (
         .clk              (clk),
         .rst              (rst),
-        .ex_mem_candidate (ex_mem_active_candidate),
+        .ex_mem_candidate (ex_mem_candidate),
         .ex_mem_q         (ex_mem_q),
         .ex_request_block (ex_request_block),
         .dmem_req_valid   (dmem_req_valid),
@@ -468,7 +469,7 @@ module rv32_core #(
         endcase
 
         case (ex_mem_action)
-            PIPE_LOAD:  ex_mem_d       = ex_mem_active_candidate;
+            PIPE_LOAD:  ex_mem_d       = ex_mem_candidate;
             PIPE_HOLD:  ex_mem_d       = ex_mem_q;
             PIPE_CLEAR: ex_mem_d.valid = 1'b0;
             default:    ex_mem_d       = ex_mem_q;

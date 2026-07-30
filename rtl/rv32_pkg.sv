@@ -244,7 +244,7 @@ package rv32_pkg;
     typedef struct packed { // exception info
         logic        valid;
         logic [31:0] cause;
-        logic [31:0] value;
+        logic [31:0] value; // mtval
     } exception_t;
 
     // Pipeline-register packets

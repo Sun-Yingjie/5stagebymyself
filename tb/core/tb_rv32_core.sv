@@ -639,9 +639,9 @@ module tb_rv32_core;
                 "illegal CSR access did not reach the MEM access checker"
             );
             check_condition(
-                (dut.ex_mem_active_candidate.valid === 1'b1) &&
-                (dut.ex_mem_active_candidate.pc === younger_store_pc) &&
-                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1),
+                (dut.ex_mem_candidate.valid === 1'b1) &&
+                (dut.ex_mem_candidate.pc === younger_store_pc) &&
+                (dut.ex_mem_candidate.mem_ctrl.memory_write === 1'b1),
                 "younger store was not aligned in EX with the CSR trap"
             );
             check_condition(
@@ -1890,12 +1890,12 @@ module tb_rv32_core;
                     "backpressured EX request did not preserve a snapshot"
                 );
                 check_condition(
-                    dut.ex_mem_active_candidate.exec_result === 32'h0000_0100,
+                    dut.ex_mem_candidate.exec_result === 32'h0000_0100,
                     "held EX request address changed after forwarding expired"
                 );
                 check_condition(
-                    dut.ex_mem_active_candidate.mem_ctrl.memory_write &&
-                        !dut.ex_mem_active_candidate.exception.valid,
+                    dut.ex_mem_candidate.mem_ctrl.memory_write &&
+                        !dut.ex_mem_candidate.exception.valid,
                     "held EX request changed memory control or exception state"
                 );
             end
@@ -2199,9 +2199,9 @@ module tb_rv32_core;
                 "illegal trap payload was wrong beside older retirement"
             );
             check_condition(
-                (dut.ex_mem_active_candidate.valid === 1'b1) &&
-                (dut.ex_mem_active_candidate.pc === 32'h0000_0008) &&
-                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1) &&
+                (dut.ex_mem_candidate.valid === 1'b1) &&
+                (dut.ex_mem_candidate.pc === 32'h0000_0008) &&
+                (dut.ex_mem_candidate.mem_ctrl.memory_write === 1'b1) &&
                 (dmem_req_ready === 1'b1) &&
                 (dmem_req_valid === 1'b0) &&
                 (dut.u_lsu.request_fire === 1'b0) &&
@@ -2529,9 +2529,9 @@ module tb_rv32_core;
                 !(
                     (dut.mem_response_wait === 1'b1) &&
                     (dut.u_lsu.outstanding_q === 1'b1) &&
-                    (dut.ex_mem_active_candidate.valid === 1'b1) &&
-                    (dut.ex_mem_active_candidate.pc === fault_pc + 32'd4) &&
-                    (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1)
+                    (dut.ex_mem_candidate.valid === 1'b1) &&
+                    (dut.ex_mem_candidate.pc === fault_pc + 32'd4) &&
+                    (dut.ex_mem_candidate.mem_ctrl.memory_write === 1'b1)
                 ) &&
                 (scenario_cycle_count < SCENARIO_TIMEOUT_CYCLES)
             ) begin
@@ -2541,9 +2541,9 @@ module tb_rv32_core;
             check_condition(
                 (dut.mem_response_wait === 1'b1) &&
                 (dut.u_lsu.outstanding_q === 1'b1) &&
-                (dut.ex_mem_active_candidate.valid === 1'b1) &&
-                (dut.ex_mem_active_candidate.pc === fault_pc + 32'd4) &&
-                (dut.ex_mem_active_candidate.mem_ctrl.memory_write === 1'b1),
+                (dut.ex_mem_candidate.valid === 1'b1) &&
+                (dut.ex_mem_candidate.pc === fault_pc + 32'd4) &&
+                (dut.ex_mem_candidate.mem_ctrl.memory_write === 1'b1),
                 "could not align the faulting and younger stores"
             );
             check_condition(
@@ -2937,7 +2937,7 @@ module tb_rv32_core;
             check_condition(
                 dut.mret_commit &&
                 dut.ex_mem_q.mret &&
-                (dut.ex_mem_active_candidate.instruction == younger_store),
+                (dut.ex_mem_candidate.instruction == younger_store),
                 "MRET did not align with the younger handler store"
             );
             check_condition(
@@ -4726,8 +4726,8 @@ module tb_rv32_core;
             check_condition(
                 dut.post_commit_interrupt_take &&
                 dut.commit_valid &&
-                dut.ex_mem_active_candidate.valid &&
-                (dut.ex_mem_active_candidate.instruction == younger_store) &&
+                dut.ex_mem_candidate.valid &&
+                (dut.ex_mem_candidate.instruction == younger_store) &&
                 !dmem_req_valid &&
                 dut.ex_request_block,
                 "load completion interrupt did not block the younger store"
@@ -5758,8 +5758,8 @@ module tb_rv32_core;
                 end
 
                 if (
-                    dut.ex_mem_active_candidate.valid &&
-                    dut.ex_mem_active_candidate.mem_ctrl.memory_write
+                    dut.ex_mem_candidate.valid &&
+                    dut.ex_mem_candidate.mem_ctrl.memory_write
                 ) begin
                     check_condition(
                         !dmem_req_valid &&
@@ -5873,8 +5873,8 @@ module tb_rv32_core;
                         "faulting MEM instruction formed a retirement candidate"
                     );
                     if (
-                        dut.ex_mem_active_candidate.valid &&
-                        dut.ex_mem_active_candidate.mem_ctrl.memory_write
+                        dut.ex_mem_candidate.valid &&
+                        dut.ex_mem_candidate.mem_ctrl.memory_write
                     ) begin
                         check_condition(
                             !dmem_req_valid &&
