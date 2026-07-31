@@ -104,38 +104,39 @@ module rv32_core #(
     forward_select_e rs1_forward_select;
     forward_select_e rs2_forward_select;
 
-    logic fetch_response_available; // Valid, non-stale IMem response available to the IFU
-    logic late_result_hazard;       // Load-use or CSR-use hazard
-    logic csr_access_valid;
-    logic csr_access_illegal;
-    logic ex_request_block;
-    logic mem_request_block;
-    logic ex_request_wait;
-    logic mem_memory_access;
-    logic mem_stage_complete;
-    logic mem_response_wait;
-    logic lsu_response_fire;
-    logic trap_take;
-    logic post_commit_interrupt_take;
-    logic empty_interrupt_take;
-    logic interrupt_take;
-    logic mret_commit;
-    logic mem_commit_candidate;
-    logic commit_valid;
-    logic redirect_commit;
-    logic if_id_ready;
-    logic ex_multicycle_wait;
-    logic lsu_outstanding;
-    logic pipeline_empty;
-    logic empty_interrupt_boundary;
-    logic execute_kill;
+    logic fetch_response_available;     // Valid, non-stale IMem response available to the IFU
+    logic late_result_hazard;           // Load-use or CSR-use hazard
+    logic csr_access_valid;             // A CSR access is in MEM with no earlier exception
+    logic csr_access_illegal;           // CSR address does not exist, or a write targets a read-only CSR
+    logic ex_request_block;             // Block a younger EX-stage DMem request during an older MEM event or interrupt
+    logic mem_request_block;            // Block younger DMem requests for a MEM exception or committed MRET
+    logic ex_request_wait;              // EX-stage DMem request is valid but not yet accepted
+    logic mem_memory_access;            // Current valid MEM-stage instruction is a load or store
+    logic mem_stage_complete;           // MEM needs no DMem response, or its response handshakes now
+    logic mem_response_wait;            // An outstanding DMem transaction has not returned a response
+    logic lsu_response_fire;            // DMem response handshakes this cycle
+    logic trap_take;                    // Take a synchronous exception at the MEM commit boundary
+    logic post_commit_interrupt_take;   // Take an eligible interrupt after the current MEM instruction commits
+    logic empty_interrupt_take;         // Take an eligible interrupt at a safe empty-pipeline boundary
+    logic interrupt_take;               // Either post-commit or empty-boundary interrupt is taken
+    logic mret_commit;                  // A valid MRET is ready to commit at the MEM boundary
+    logic mem_commit_candidate;         // MEM instruction is complete and exception-free, before pipeline acceptance
+    logic commit_valid;                 // MEM commit candidate is accepted by the pipeline this cycle
+    logic redirect_commit;              // Global pipeline control accepts the raw EX redirect
+    logic if_id_ready;                  // IF/ID can accept an instruction this cycle
+    logic ex_multicycle_wait;           // EX is waiting for a MDU result
+    logic lsu_outstanding;              // One DMem transaction is outstanding
+    logic pipeline_empty;               // No valid instruction exists in any pipeline register
+    logic empty_interrupt_boundary;     // Pipeline is empty with no outstanding LSU transaction or active MDU operation
+    logic execute_kill;                 // Cancel younger MDU work on trap, interrupt, or committed MRET
 
+    // Stable execute-stage MDU observations retained for Core-TB assertions.
     logic        mdu_req_valid;
     logic        mdu_req_ready;
     logic        mdu_rsp_valid;
     logic        mdu_rsp_ready;
     logic [31:0] mdu_rsp_result;
-    logic        mdu_idle;
+    logic        mdu_idle;              // Also qualifies the empty interrupt boundary
     logic        mdu_kill;
 
     logic [31:0] lsu_load_result;
@@ -143,7 +144,7 @@ module rv32_core #(
     logic [31:0] mret_target;
     logic [31:0] effective_architectural_next_pc;
     logic [31:0] boundary_resume_pc;
-    logic [31:0] resume_pc_q;
+    logic [31:0] resume_pc_q;           // Saved architectural resume PC for an empty-pipeline interrupt boundary
     logic [31:0] resume_pc_d;
 
     // Flattened control fields keep Icarus port widths unambiguous.
@@ -155,26 +156,15 @@ module rv32_core #(
     logic ex_mem_csr_read_enable;
     logic ex_mem_csr_write_enable;
 
-    // Writeback and architectural retirement observation
-    rv32_wbu u_wbu (
-        .rst            (rst),
-        .mem_wb_q       (mem_wb_q),
-        .wb_bus         (wb_bus),
-        .retire_valid   (retire_valid),
-        .retire_pc      (retire_pc),
-        .retire_instr   (retire_instr),
-        .retire_rd_we   (retire_rd_we),
-        .retire_rd_addr (retire_rd_addr),
-        .retire_rd_data (retire_rd_data)
-    );
-
-    // Forwarding control metadata
+    // Forwarding and hazard metadata
     assign id_ex_result_late =
         id_ex_q.mem_ctrl.memory_read || id_ex_q.csr_ctrl.valid;
     assign ex_mem_register_write = ex_mem_q.wb_ctrl.register_write;
     assign ex_mem_result_late =
         ex_mem_q.mem_ctrl.memory_read || ex_mem_q.csr_ctrl.valid;
     assign mem_wb_register_write = mem_wb_q.wb_ctrl.register_write;
+
+    // Flattened EX/MEM CSR controls for the CSR/trap stage
     assign ex_mem_csr_operation =
         csr_operation_e'(ex_mem_q.csr_ctrl.operation);
     assign ex_mem_csr_read_enable = ex_mem_q.csr_ctrl.read_enable;
@@ -317,6 +307,19 @@ module rv32_core #(
         .effective_architectural_next_pc(effective_architectural_next_pc),
         .boundary_resume_pc             (boundary_resume_pc),
         .mem_request_block              (mem_request_block)
+    );
+
+    // Writeback and architectural retirement observation
+    rv32_wbu u_wbu (
+        .rst            (rst),
+        .mem_wb_q       (mem_wb_q),
+        .wb_bus         (wb_bus),
+        .retire_valid   (retire_valid),
+        .retire_pc      (retire_pc),
+        .retire_instr   (retire_instr),
+        .retire_rd_we   (retire_rd_we),
+        .retire_rd_addr (retire_rd_addr),
+        .retire_rd_data (retire_rd_data)
     );
 
     assign pipeline_empty =
