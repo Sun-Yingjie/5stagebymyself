@@ -20,6 +20,21 @@ SPEC.loader.exec_module(RUNNER)
 
 
 class Act4ProvenanceTest(unittest.TestCase):
+    def test_core_filelist_covers_and_hashes_all_rtl_sources(self) -> None:
+        listed_sources = set(RUNNER.read_filelist_sources(RUNNER.CORE_FILELIST))
+        rtl_sources = set((REPO_ROOT / "rtl").rglob("*.sv"))
+        self.assertEqual(listed_sources, rtl_sources)
+
+        hashes = RUNNER.project_input_provenance()["dut_rtl_and_filelists"]
+        expected_paths = {RUNNER.CORE_FILELIST, *listed_sources}
+        expected_names = {
+            path.relative_to(REPO_ROOT).as_posix() for path in expected_paths
+        }
+        self.assertEqual(set(hashes), expected_names)
+        for path in expected_paths:
+            name = path.relative_to(REPO_ROOT).as_posix()
+            self.assertEqual(hashes[name], RUNNER.sha256_file(path))
+
     def test_begin_report_replaces_stale_pass_with_new_running_id(self) -> None:
         with tempfile.TemporaryDirectory(prefix="act4-stale-report.") as tmp:
             report_path = Path(tmp) / "report.json"

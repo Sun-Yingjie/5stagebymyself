@@ -5,10 +5,11 @@ module rv32_core #(
 ) (
     input  logic        clk,
     input  logic        rst,
+
     input  logic        irq_software,
     input  logic        irq_timer,
     input  logic        irq_external,
-
+    // Core <-> instruction-memory interface
     output logic        imem_req_valid,
     input  logic        imem_req_ready,
     output logic [31:0] imem_req_addr,
@@ -16,7 +17,7 @@ module rv32_core #(
     output logic        imem_rsp_ready,
     input  logic [31:0] imem_rsp_data,
     input  logic        imem_rsp_error,
-
+    // Core <-> data-memory interface
     output logic        dmem_req_valid,
     input  logic        dmem_req_ready,
     output logic        dmem_req_write,
@@ -28,6 +29,7 @@ module rv32_core #(
     input  logic [31:0] dmem_rsp_rdata,
     input  logic        dmem_rsp_error,
 
+    // Optional architectural retirement trace interface.
     output logic        retire_valid,
     output logic [31:0] retire_pc,
     output logic [31:0] retire_instr,
@@ -35,11 +37,13 @@ module rv32_core #(
     output logic [4:0]  retire_rd_addr,
     output logic [31:0] retire_rd_data,
 
+    // Optional architectural trap observation interface.
     output logic        trap_valid,
     output logic [31:0] trap_pc,
     output logic [31:0] trap_cause,
     output logic [31:0] trap_value,
 
+    // Reserved coprocessor interface; fixed inactive in this core version.
     output logic        cp_req_valid,
     input  logic        cp_req_ready,
     output logic [31:0] cp_req_pc,
@@ -54,6 +58,12 @@ module rv32_core #(
 
     import rv32_pkg::*;
 
+    // Pipeline-state naming convention:
+    //   *_q         : current registered state
+    //   *_d         : final next state after LOAD/HOLD/CLEAR selection
+    //   *_candidate : combinational value proposed by the preceding stage
+    // Only *_q is implemented as flip-flops. The other forms are combinational.
+
     // Pipeline state
     if_id_t  if_id_q;
     if_id_t  if_id_d;
@@ -65,9 +75,7 @@ module rv32_core #(
 
     ex_mem_t ex_mem_q;
     ex_mem_t ex_mem_d;
-    ex_mem_t ex_mem_base_candidate;
     ex_mem_t ex_mem_candidate;
-    ex_mem_t ex_mem_active_candidate;
 
     mem_wb_t mem_wb_q;
     mem_wb_t mem_wb_d;
@@ -75,77 +83,69 @@ module rv32_core #(
 
     // Stage interconnect and global control
     wb_bus_t    wb_bus;
-    redirect_t  ex_raw_redirect;
-    redirect_t  raw_redirect;
-    redirect_t  trap_redirect;
-    redirect_t  interrupt_redirect;
-    redirect_t  mret_redirect;
-    redirect_t  qualified_redirect;
-    exception_t lsu_exception;
-    exception_t final_mem_exception;
-    exception_t lsu_mem_exception_compat;
-    mem_wb_t    lsu_mem_wb_compat;
+    redirect_t  raw_redirect;       // P3: EX-stage branch/JAL/JALR redirect
+    redirect_t  trap_redirect;      // P0: synchronous-trap redirect at the MEM commit boundary
+    redirect_t  interrupt_redirect; // P1: software/timer/external interrupt redirect
+    redirect_t  mret_redirect;      // P2: committed MRET redirect
+    redirect_t  qualified_redirect; // Selected redirect after global priority arbitration
+    exception_t lsu_exception;      // LSU load/store access fault
+    exception_t final_mem_exception;// Final synchronous exception selected at MEM commit
 
-    // Preserve the complete EX candidate while ID/EX is held.
-    logic      ex_hold_valid_q;
-    ex_mem_t   ex_mem_hold_q;
-    redirect_t ex_redirect_hold_q;
+    // Execute-stage hold observation retained for Core-TB protocol assertions.
+    logic ex_hold_valid;
 
-    fetch_action_e fetch_action;
-    pipe_action_e  if_id_action;
+    fetch_action_e fetch_action;    // reset/hold/sequential/redirect
+    pipe_action_e  if_id_action;    // load/hold/clear
     pipe_action_e  id_ex_action;
     pipe_action_e  ex_mem_action;
     pipe_action_e  mem_wb_action;
 
+    // Select each EX operand from its ID/EX-captured value, EX/MEM, or MEM/WB.
     forward_select_e rs1_forward_select;
     forward_select_e rs2_forward_select;
 
-    logic fetch_response_available;
-    logic late_result_hazard;
-    logic csr_access_valid;
-    logic csr_access_illegal;
-    logic ex_request_block;
-    logic ex_request_wait;
-    logic mem_memory_access;
-    logic mem_stage_complete;
-    logic mem_response_wait;
-    logic lsu_response_fire;
-    logic trap_take;
-    logic post_commit_interrupt_take;
-    logic empty_interrupt_take;
-    logic interrupt_take;
-    logic mret_commit;
-    logic mem_commit_candidate;
-    logic commit_valid;
-    logic redirect_commit;
-    logic if_id_ready;
-    logic ex_multicycle_wait;
-    logic lsu_outstanding;
-    logic pipeline_empty;
-    logic empty_interrupt_boundary;
+    logic fetch_response_available;     // Valid, non-stale IMem response available to the IFU
+    logic late_result_hazard;           // Load-use or CSR-use hazard
+    logic csr_access_valid;             // A CSR access is in MEM with no earlier exception
+    logic csr_access_illegal;           // CSR address does not exist, or a write targets a read-only CSR
+    logic ex_request_block;             // Block a younger EX-stage DMem request during an older MEM event or interrupt
+    logic mem_request_block;            // Block younger DMem requests for a MEM exception or committed MRET
+    logic ex_request_wait;              // EX-stage DMem request is valid but not yet accepted
+    logic mem_memory_access;            // Current valid MEM-stage instruction is a load or store
+    logic mem_stage_complete;           // MEM needs no DMem response, or its response handshakes now
+    logic mem_response_wait;            // An outstanding DMem transaction has not returned a response
+    logic lsu_response_fire;            // DMem response handshakes this cycle
+    logic trap_take;                    // Take a synchronous exception at the MEM commit boundary
+    logic post_commit_interrupt_take;   // Take an eligible interrupt after the current MEM instruction commits
+    logic empty_interrupt_take;         // Take an eligible interrupt at a safe empty-pipeline boundary
+    logic interrupt_take;               // Either post-commit or empty-boundary interrupt is taken
+    logic mret_commit;                  // A valid MRET is ready to commit at the MEM boundary
+    logic mem_commit_candidate;         // MEM instruction is complete and exception-free, before pipeline acceptance
+    logic commit_valid;                 // MEM commit candidate is accepted by the pipeline this cycle
+    logic redirect_commit;              // Global pipeline control accepts the raw EX redirect
+    logic if_id_ready;                  // IF/ID can accept an instruction this cycle
+    logic ex_multicycle_wait;           // EX is waiting for a MDU result
+    logic lsu_outstanding;              // One DMem transaction is outstanding
+    logic pipeline_empty;               // No valid instruction exists in any pipeline register
+    logic empty_interrupt_boundary;     // Pipeline is empty with no outstanding LSU transaction or active MDU operation
+    logic execute_kill;                 // Cancel younger MDU work on trap, interrupt, or committed MRET
 
-    logic        m_ex_valid;
+    // Stable execute-stage MDU observations retained for Core-TB assertions.
     logic        mdu_req_valid;
     logic        mdu_req_ready;
     logic        mdu_rsp_valid;
     logic        mdu_rsp_ready;
     logic [31:0] mdu_rsp_result;
-    logic        mdu_idle;
+    logic        mdu_idle;              // Also qualifies the empty interrupt boundary
     logic        mdu_kill;
-    mdu_operation_e mdu_req_operation;
 
-    logic [31:0] ex_mem_forward_value;
-    logic [31:0] mem_wb_forward_value;
-    logic [31:0] wb_write_data;
     logic [31:0] lsu_load_result;
     logic [31:0] csr_read_data;
     logic [31:0] mret_target;
     logic [31:0] effective_architectural_next_pc;
     logic [31:0] boundary_resume_pc;
-    logic [31:0] resume_pc_q;
+    logic [31:0] resume_pc_q;           // Saved architectural resume PC for an empty-pipeline interrupt boundary
     logic [31:0] resume_pc_d;
-    logic [31:0] rs1_exec;
-    logic [31:0] rs2_exec;
 
     // Flattened control fields keep Icarus port widths unambiguous.
     logic id_ex_result_late;
@@ -156,93 +156,24 @@ module rv32_core #(
     logic ex_mem_csr_read_enable;
     logic ex_mem_csr_write_enable;
 
-    // Writeback and retirement
-    always_comb begin
-        wb_write_data = '0;
-
-        case (mem_wb_q.wb_ctrl.writeback_select)
-            WB_EXEC:      wb_write_data = mem_wb_q.exec_result;
-            WB_LOAD:      wb_write_data = mem_wb_q.load_result;
-            WB_PC_PLUS_4: wb_write_data = mem_wb_q.pc_plus_4;
-            WB_CSR:       wb_write_data = mem_wb_q.csr_read_data;
-            default:      wb_write_data = '0;
-        endcase
-    end
-
-    always_comb begin
-        wb_bus = '0;
-
-        wb_bus.valid           = !rst && mem_wb_q.valid;
-        wb_bus.rd_write_enable = mem_wb_q.wb_ctrl.register_write;
-        wb_bus.rd_addr         = mem_wb_q.rd_addr;
-        wb_bus.rd_data         = wb_write_data;
-    end
-
-    assign retire_valid   = wb_bus.valid;
-    assign retire_pc      = mem_wb_q.pc;
-    assign retire_instr   = mem_wb_q.instruction;
-    assign retire_rd_we   =
-        retire_valid &&
-        wb_bus.rd_write_enable &&
-        (wb_bus.rd_addr != '0);
-    assign retire_rd_addr = wb_bus.rd_addr;
-    assign retire_rd_data = wb_bus.rd_data;
-
-    // Forwarding datapath
+    // Forwarding and hazard metadata
     assign id_ex_result_late =
         id_ex_q.mem_ctrl.memory_read || id_ex_q.csr_ctrl.valid;
     assign ex_mem_register_write = ex_mem_q.wb_ctrl.register_write;
     assign ex_mem_result_late =
         ex_mem_q.mem_ctrl.memory_read || ex_mem_q.csr_ctrl.valid;
     assign mem_wb_register_write = mem_wb_q.wb_ctrl.register_write;
+
+    // Flattened EX/MEM CSR controls for the CSR/trap stage
     assign ex_mem_csr_operation =
         csr_operation_e'(ex_mem_q.csr_ctrl.operation);
     assign ex_mem_csr_read_enable = ex_mem_q.csr_ctrl.read_enable;
     assign ex_mem_csr_write_enable = ex_mem_q.csr_ctrl.write_enable;
 
-    assign mem_wb_forward_value = wb_write_data;
-
-    always_comb begin
-        ex_mem_candidate = ex_mem_base_candidate;
-
-        if (id_ex_q.mdu_ctrl.valid) begin
-            ex_mem_candidate.valid       = m_ex_valid && mdu_rsp_valid;
-            ex_mem_candidate.exec_result = mdu_rsp_result;
-        end
-    end
-
-    always_comb begin
-        ex_mem_active_candidate = ex_mem_candidate;
-
-        if (ex_hold_valid_q) begin
-            ex_mem_active_candidate = ex_mem_hold_q;
-        end
-    end
-
-    assign raw_redirect =
-        ex_hold_valid_q ? ex_redirect_hold_q : ex_raw_redirect;
-
-    always_comb begin
-        ex_mem_forward_value = '0;
-
-        case (ex_mem_q.wb_ctrl.writeback_select)
-            WB_EXEC: begin
-                ex_mem_forward_value = ex_mem_q.exec_result;
-            end
-
-            WB_PC_PLUS_4: begin
-                ex_mem_forward_value = ex_mem_q.pc_plus_4;
-            end
-
-            default: begin
-                ex_mem_forward_value = '0;
-            end
-        endcase
-    end
-
-    // Frontend control
+    // Frontend acceptance
     assign if_id_ready = (if_id_action == PIPE_LOAD);
 
+    // Global redirect priority: trap > interrupt > MRET > EX redirect.
     always_comb begin
         qualified_redirect = '0;
 
@@ -257,7 +188,7 @@ module rv32_core #(
         end
     end
 
-    // Coprocessor is disabled in v0.1.
+    // Coprocessor is reserved but disabled in the frozen core architecture.
     assign cp_req_valid    = 1'b0;
     assign cp_req_pc       = '0;
     assign cp_req_instr    = '0;
@@ -292,53 +223,36 @@ module rv32_core #(
         .id_ex_candidate (id_ex_candidate)
     );
 
-    rv32_exu u_exu (
-        .id_ex_q             (id_ex_q),
-        .rs1_forward_select  (rs1_forward_select),
-        .rs2_forward_select  (rs2_forward_select),
-        .ex_mem_forward_value(ex_mem_forward_value),
-        .mem_wb_forward_value(mem_wb_forward_value),
-        .rs1_exec            (rs1_exec),
-        .rs2_exec            (rs2_exec),
-        .ex_mem_candidate    (ex_mem_base_candidate),
-        .raw_redirect        (ex_raw_redirect)
-    );
+    assign execute_kill = trap_take || interrupt_take || mret_commit;
 
-    assign m_ex_valid =
-        id_ex_q.valid &&
-        id_ex_q.mdu_ctrl.valid &&
-        !id_ex_q.exception.valid;
-
-    assign mdu_kill = rst || trap_take || interrupt_take || mret_commit;
-    assign mdu_req_operation =
-        mdu_operation_e'(id_ex_q.mdu_ctrl.operation);
-    assign mdu_req_valid = m_ex_valid && mdu_idle && !mdu_kill;
-    assign ex_multicycle_wait =
-        m_ex_valid && !mdu_rsp_valid && !mdu_kill;
-    assign mdu_rsp_ready =
-        m_ex_valid &&
-        (ex_mem_action == PIPE_LOAD) &&
-        !mdu_kill;
-
-    rv32_mdu u_mdu (
-        .clk           (clk),
-        .rst           (rst),
-        .req_valid     (mdu_req_valid),
-        .req_ready     (mdu_req_ready),
-        .req_operation (mdu_req_operation),
-        .req_operand_a (rs1_exec),
-        .req_operand_b (rs2_exec),
-        .rsp_valid     (mdu_rsp_valid),
-        .rsp_ready     (mdu_rsp_ready),
-        .rsp_result    (mdu_rsp_result),
-        .idle          (mdu_idle),
-        .kill          (mdu_kill)
+    rv32_execute_stage u_execute_stage (
+        .clk                     (clk),
+        .rst                     (rst),
+        .id_ex_q                 (id_ex_q),
+        .rs1_forward_select      (rs1_forward_select),
+        .rs2_forward_select      (rs2_forward_select),
+        .ex_mem_q                (ex_mem_q),
+        .mem_wb_forward_data     (wb_bus.rd_data),
+        .id_ex_action            (id_ex_action),
+        .ex_mem_action           (ex_mem_action),
+        .execute_kill            (execute_kill),
+        .ex_mem_active_candidate (ex_mem_candidate),
+        .raw_redirect            (raw_redirect),
+        .ex_hold_valid           (ex_hold_valid),
+        .ex_multicycle_wait      (ex_multicycle_wait),
+        .mdu_idle                (mdu_idle),
+        .mdu_req_valid           (mdu_req_valid),
+        .mdu_req_ready           (mdu_req_ready),
+        .mdu_rsp_valid           (mdu_rsp_valid),
+        .mdu_rsp_ready           (mdu_rsp_ready),
+        .mdu_rsp_result          (mdu_rsp_result),
+        .mdu_kill                (mdu_kill)
     );
 
     rv32_lsu u_lsu (
         .clk              (clk),
         .rst              (rst),
-        .ex_mem_candidate (ex_mem_active_candidate),
+        .ex_mem_candidate (ex_mem_candidate),
         .ex_mem_q         (ex_mem_q),
         .ex_request_block (ex_request_block),
         .dmem_req_valid   (dmem_req_valid),
@@ -351,25 +265,13 @@ module rv32_core #(
         .dmem_rsp_ready   (dmem_rsp_ready),
         .dmem_rsp_rdata   (dmem_rsp_rdata),
         .dmem_rsp_error   (dmem_rsp_error),
+        .response_fire    (lsu_response_fire),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
         .lsu_outstanding  (lsu_outstanding),
         .load_result      (lsu_load_result),
-        .lsu_exception    (lsu_exception),
-        .mem_wb_candidate (lsu_mem_wb_compat),
-        .mem_exception    (lsu_mem_exception_compat)
+        .lsu_exception    (lsu_exception)
     );
-
-    // MEM result ownership and final synchronous exception merge
-    assign mem_memory_access =
-        ex_mem_q.valid &&
-        (
-            ex_mem_q.mem_ctrl.memory_read ||
-            ex_mem_q.mem_ctrl.memory_write
-        );
-
-    assign lsu_response_fire = dmem_rsp_valid && dmem_rsp_ready;
-    assign mem_stage_complete = !mem_memory_access || lsu_response_fire;
 
     assign mret_redirect.valid  = mret_commit;
     assign mret_redirect.target = mret_commit ? mret_target : 32'b0;
@@ -379,69 +281,46 @@ module rv32_core #(
         ex_mem_q.csr_ctrl.valid &&
         !ex_mem_q.exception.valid;
 
-    always_comb begin
-        final_mem_exception = '0;
-
-        if (ex_mem_q.valid) begin
-            if (ex_mem_q.exception.valid) begin
-                final_mem_exception = ex_mem_q.exception;
-            end else if (csr_access_illegal) begin
-                final_mem_exception.valid = 1'b1;
-                final_mem_exception.cause =
-                    EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
-                final_mem_exception.value = ex_mem_q.instruction;
-            end else if (lsu_exception.valid) begin
-                final_mem_exception = lsu_exception;
-            end
-        end
-    end
-
     assign ex_request_block =
-        (ex_mem_q.valid && final_mem_exception.valid) ||
-        interrupt_take ||
-        mret_commit;
-
-    always_comb begin
-        mem_wb_candidate = '0;
-
-        mem_wb_candidate.valid =
-            ex_mem_q.valid &&
-            mem_stage_complete &&
-            !final_mem_exception.valid;
-
-        mem_wb_candidate.pc          = ex_mem_q.pc;
-        mem_wb_candidate.instruction = ex_mem_q.instruction;
-        mem_wb_candidate.pc_plus_4   = ex_mem_q.pc_plus_4;
-        mem_wb_candidate.exec_result = ex_mem_q.exec_result;
-        mem_wb_candidate.load_result = lsu_load_result;
-        mem_wb_candidate.csr_read_data = csr_read_data;
-        mem_wb_candidate.rd_addr     = ex_mem_q.rd_addr;
-        mem_wb_candidate.wb_ctrl     = ex_mem_q.wb_ctrl;
-        mem_wb_candidate.exception   = final_mem_exception;
-    end
-
-    assign mem_commit_candidate =
-        !rst &&
-        ex_mem_q.valid &&
-        mem_stage_complete &&
-        !final_mem_exception.valid &&
-        mem_wb_candidate.valid;
+        mem_request_block || interrupt_take;
 
     assign commit_valid =
         mem_commit_candidate &&
         (mem_wb_action == PIPE_LOAD);
 
-    assign mret_commit =
-        mem_commit_candidate &&
-        ex_mem_q.mret;
+    rv32_mem_commit u_mem_commit (
+        .rst                            (rst),
+        .ex_mem_q                       (ex_mem_q),
+        .lsu_response_fire              (lsu_response_fire),
+        .lsu_load_result                (lsu_load_result),
+        .lsu_exception                  (lsu_exception),
+        .csr_access_illegal             (csr_access_illegal),
+        .csr_read_data                  (csr_read_data),
+        .mret_target                    (mret_target),
+        .resume_pc                      (resume_pc_q),
+        .mem_memory_access              (mem_memory_access),
+        .mem_stage_complete             (mem_stage_complete),
+        .final_mem_exception            (final_mem_exception),
+        .mem_wb_candidate               (mem_wb_candidate),
+        .mem_commit_candidate           (mem_commit_candidate),
+        .mret_commit                    (mret_commit),
+        .effective_architectural_next_pc(effective_architectural_next_pc),
+        .boundary_resume_pc             (boundary_resume_pc),
+        .mem_request_block              (mem_request_block)
+    );
 
-    assign effective_architectural_next_pc =
-        ex_mem_q.mret ? mret_target : ex_mem_q.architectural_next_pc;
-
-    assign boundary_resume_pc =
-        mem_commit_candidate
-            ? effective_architectural_next_pc
-            : resume_pc_q;
+    // Writeback and architectural retirement observation
+    rv32_wbu u_wbu (
+        .rst            (rst),
+        .mem_wb_q       (mem_wb_q),
+        .wb_bus         (wb_bus),
+        .retire_valid   (retire_valid),
+        .retire_pc      (retire_pc),
+        .retire_instr   (retire_instr),
+        .retire_rd_we   (retire_rd_we),
+        .retire_rd_addr (retire_rd_addr),
+        .retire_rd_data (retire_rd_data)
+    );
 
     assign pipeline_empty =
         !if_id_q.valid &&
@@ -546,6 +425,10 @@ module rv32_core #(
     );
 
     // Pipeline next-state selection
+    // Select the final next state of each pipeline register:
+    //   PIPE_LOAD  - accept the new candidate
+    //   PIPE_HOLD  - preserve the current registered state
+    //   PIPE_CLEAR - invalidate the pipeline entry and insert a bubble
     always_comb begin
         if_id_d  = if_id_q;
         id_ex_d  = id_ex_q;
@@ -567,7 +450,7 @@ module rv32_core #(
         endcase
 
         case (ex_mem_action)
-            PIPE_LOAD:  ex_mem_d       = ex_mem_active_candidate;
+            PIPE_LOAD:  ex_mem_d       = ex_mem_candidate;
             PIPE_HOLD:  ex_mem_d       = ex_mem_q;
             PIPE_CLEAR: ex_mem_d.valid = 1'b0;
             default:    ex_mem_d       = ex_mem_q;
@@ -603,29 +486,13 @@ module rv32_core #(
             ex_mem_q.valid <= 1'b0;
             mem_wb_q.valid <= 1'b0;
 
-            ex_hold_valid_q    <= 1'b0;
-            ex_mem_hold_q      <= '0;
-            ex_redirect_hold_q <= '0;
-            resume_pc_q         <= RESET_VECTOR;
+            resume_pc_q <= RESET_VECTOR;
         end else begin
-            if_id_q  <= if_id_d;
-            id_ex_q  <= id_ex_d;
-            ex_mem_q <= ex_mem_d;
-            mem_wb_q <= mem_wb_d;
+            if_id_q    <= if_id_d;
+            id_ex_q    <= id_ex_d;
+            ex_mem_q   <= ex_mem_d;
+            mem_wb_q   <= mem_wb_d;
             resume_pc_q <= resume_pc_d;
-
-            if (
-                !ex_hold_valid_q &&
-                id_ex_q.valid &&
-                !id_ex_q.mdu_ctrl.valid &&
-                (id_ex_action == PIPE_HOLD)
-            ) begin
-                ex_hold_valid_q    <= 1'b1;
-                ex_mem_hold_q      <= ex_mem_candidate;
-                ex_redirect_hold_q <= ex_raw_redirect;
-            end else if (id_ex_action != PIPE_HOLD) begin
-                ex_hold_valid_q <= 1'b0;
-            end
         end
     end
 endmodule

@@ -36,8 +36,11 @@ module rv32_forward_unit (
     always_comb begin
         rs1_forward_select = FWD_REG;
         rs2_forward_select = FWD_REG;
+
+        // A matching EX/MEM producer is younger than MEM/WB. If that younger
+        // result is late, keep FWD_REG selected and block the stale WB value.
         // rs1 forwarding
-        if (ex_valid && ex_uses_rs1) begin // execute stage, rs1 valid
+        if (ex_valid && ex_uses_rs1) begin // valid EX consumer uses rs1
             if ( // ex/mem can forward
                 ex_mem_valid &&
                 ex_mem_register_write &&
@@ -58,7 +61,7 @@ module rv32_forward_unit (
             end
         end
         // rs2 forwarding
-        if (ex_valid && ex_uses_rs2) begin // execute stage, rs2 valid
+        if (ex_valid && ex_uses_rs2) begin // valid EX consumer uses rs2
             if ( // ex/mem can forward
                 ex_mem_valid &&
                 ex_mem_register_write &&

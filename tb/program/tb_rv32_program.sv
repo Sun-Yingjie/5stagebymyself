@@ -225,8 +225,8 @@ module tb_rv32_program #(
 
             if (dmem_request_fire) begin
                 dmem_pending_q   <= 1'b1;
-                dmem_txn_pc_q    <= dut.ex_mem_active_candidate.pc;
-                dmem_txn_instr_q <= dut.ex_mem_active_candidate.instruction;
+                dmem_txn_pc_q    <= dut.ex_mem_candidate.pc;
+                dmem_txn_instr_q <= dut.ex_mem_candidate.instruction;
 
                 if (dmem_addr_in_range) begin
                     dmem_rsp_error_q <= 1'b0;
@@ -252,9 +252,9 @@ module tb_rv32_program #(
                                 dmem_req_wstrb
                             );
                             finish_pending_q <= 1'b1;
-                            finish_pc_q <= dut.ex_mem_active_candidate.pc;
+                            finish_pc_q <= dut.ex_mem_candidate.pc;
                             finish_instr_q <=
-                                dut.ex_mem_active_candidate.instruction;
+                                dut.ex_mem_candidate.instruction;
                         end
                     end
                 end else begin
@@ -305,8 +305,8 @@ module tb_rv32_program #(
                     "{\"kind\":\"memory\",\"order\":%0d,\"cycle\":%0d,\"pc\":\"0x%08x\",\"insn\":\"0x%08x\",\"write\":%0d,\"addr\":\"0x%08x\",\"wdata\":\"0x%08x\",\"wstrb\":\"0x%01x\"}",
                     memory_order,
                     cycle_count,
-                    dut.ex_mem_active_candidate.pc,
-                    dut.ex_mem_active_candidate.instruction,
+                    dut.ex_mem_candidate.pc,
+                    dut.ex_mem_candidate.instruction,
                     dmem_req_write,
                     dmem_req_addr,
                     dmem_req_wdata,

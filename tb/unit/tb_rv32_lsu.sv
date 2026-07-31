@@ -5,7 +5,7 @@ module tb_rv32_lsu;
 
     import rv32_pkg::*;
 
-    localparam int unsigned TEST_CASE_COUNT = 14;
+    localparam int unsigned TEST_CASE_COUNT = 13;
 
     logic       clk;
     logic       rst;
@@ -25,13 +25,12 @@ module tb_rv32_lsu;
     logic [31:0] dmem_rsp_rdata;
     logic        dmem_rsp_error;
 
+    logic       response_fire;
     logic       ex_request_wait;
     logic       mem_response_wait;
     logic       lsu_outstanding;
     logic [31:0] load_result;
-    mem_wb_t    mem_wb_candidate;
     exception_t lsu_exception;
-    exception_t mem_exception;
 
     int unsigned error_count;
     int unsigned check_count;
@@ -52,13 +51,12 @@ module tb_rv32_lsu;
         .dmem_rsp_ready   (dmem_rsp_ready),
         .dmem_rsp_rdata   (dmem_rsp_rdata),
         .dmem_rsp_error   (dmem_rsp_error),
+        .response_fire    (response_fire),
         .ex_request_wait  (ex_request_wait),
         .mem_response_wait(mem_response_wait),
         .lsu_outstanding  (lsu_outstanding),
         .load_result      (load_result),
-        .lsu_exception    (lsu_exception),
-        .mem_wb_candidate (mem_wb_candidate),
-        .mem_exception    (mem_exception)
+        .lsu_exception    (lsu_exception)
     );
 
     initial begin
@@ -72,7 +70,7 @@ module tb_rv32_lsu;
         set_defaults();
 
         test_reset_and_idle_protocol();
-        test_nonmemory_passthrough();
+        test_nonmemory_quiet();
         test_request_qualification();
         test_external_request_block();
         test_load_request_backpressure();
@@ -83,7 +81,6 @@ module tb_rv32_lsu;
         test_back_to_back_transactions();
         test_load_access_fault_suppresses_store();
         test_store_access_fault();
-        test_incoming_exception_priority();
         test_reset_clears_outstanding_transaction();
 
         if (error_count != 0) begin
@@ -135,7 +132,8 @@ module tb_rv32_lsu;
             settle();
 
             check_condition(
-                !dmem_req_valid && !ex_request_wait && !dut.request_fire,
+                !dmem_req_valid && !ex_request_wait &&
+                    !dut.request_fire && !response_fire,
                 "external block suppresses ready request and internal fire"
             );
 
@@ -175,7 +173,7 @@ module tb_rv32_lsu;
             dmem_rsp_valid   = 1'b1;
             settle();
             check_condition(
-                dmem_rsp_ready && !mem_response_wait,
+                dmem_rsp_ready && response_fire && !mem_response_wait,
                 "request block does not prevent an old response completing"
             );
             tick();
@@ -210,7 +208,7 @@ module tb_rv32_lsu;
             tick();
 
             check_condition(
-                !dmem_req_valid && !dmem_rsp_ready,
+                !dmem_req_valid && !dmem_rsp_ready && !response_fire,
                 "reset: both memory channels must be inactive"
             );
             check_condition(
@@ -218,8 +216,8 @@ module tb_rv32_lsu;
                 "reset: no wait event may be asserted"
             );
             check_condition(
-                !lsu_outstanding,
-                "reset: exported outstanding state must be clear"
+                !lsu_outstanding && !lsu_exception.valid,
+                "reset: LSU state and exception outputs must be clear"
             );
 
             rst = 1'b0;
@@ -353,77 +351,6 @@ module tb_rv32_lsu;
         end
     endtask
 
-    task automatic check_mem_wb_from_q(
-        input logic        expected_valid,
-        input logic [31:0] expected_load_result,
-        input string       message
-    );
-        begin
-            check_condition(
-                mem_wb_candidate.valid === expected_valid,
-                $sformatf(
-                    "%s: valid=%b expected=%b",
-                    message,
-                    mem_wb_candidate.valid,
-                    expected_valid
-                )
-            );
-
-            if (expected_valid) begin
-                check_condition(
-                    mem_wb_candidate.pc === ex_mem_q.pc,
-                    $sformatf("%s: pc is incorrect", message)
-                );
-                check_condition(
-                    mem_wb_candidate.instruction === ex_mem_q.instruction,
-                    $sformatf("%s: instruction is incorrect", message)
-                );
-                check_condition(
-                    mem_wb_candidate.pc_plus_4 === ex_mem_q.pc_plus_4,
-                    $sformatf("%s: pc_plus_4 is incorrect", message)
-                );
-                check_condition(
-                    mem_wb_candidate.exec_result === ex_mem_q.exec_result,
-                    $sformatf("%s: exec_result is incorrect", message)
-                );
-                check_condition(
-                    mem_wb_candidate.load_result === expected_load_result,
-                    $sformatf(
-                        "%s: load=%h expected=%h",
-                        message,
-                        mem_wb_candidate.load_result,
-                        expected_load_result
-                    )
-                );
-                check_condition(
-                    load_result === expected_load_result,
-                    $sformatf(
-                        "%s: passive load=%h expected=%h",
-                        message,
-                        load_result,
-                        expected_load_result
-                    )
-                );
-                check_condition(
-                    mem_wb_candidate.rd_addr === ex_mem_q.rd_addr,
-                    $sformatf("%s: rd_addr is incorrect", message)
-                );
-                check_condition(
-                    mem_wb_candidate.wb_ctrl === ex_mem_q.wb_ctrl,
-                    $sformatf("%s: wb_ctrl is incorrect", message)
-                );
-                check_condition(
-                    !mem_wb_candidate.exception.valid,
-                    $sformatf("%s: unexpected exception", message)
-                );
-                check_condition(
-                    !lsu_exception.valid,
-                    $sformatf("%s: unexpected LSU exception", message)
-                );
-            end
-        end
-    endtask
-
     task automatic report_case(
         input int unsigned errors_before,
         input string       case_name
@@ -494,10 +421,22 @@ module tb_rv32_lsu;
             settle();
 
             check_condition(
-                dmem_rsp_ready && !mem_response_wait,
+                dmem_rsp_ready && response_fire && !mem_response_wait,
                 $sformatf("%s: response must complete", case_name)
             );
-            check_mem_wb_from_q(1'b1, expected_result, case_name);
+            check_condition(
+                load_result === expected_result,
+                $sformatf(
+                    "%s: load=%h expected=%h",
+                    case_name,
+                    load_result,
+                    expected_result
+                )
+            );
+            check_condition(
+                !lsu_exception.valid,
+                $sformatf("%s: successful response raised an exception", case_name)
+            );
         end
     endtask
 
@@ -516,20 +455,21 @@ module tb_rv32_lsu;
                 "idle request channel"
             );
             check_condition(
-                !dmem_rsp_ready && !ex_request_wait && !mem_response_wait,
+                !dmem_rsp_ready && !response_fire &&
+                    !ex_request_wait && !mem_response_wait,
                 "idle: response and wait outputs must be low"
             );
             check_condition(
-                !mem_wb_candidate.valid && !mem_exception.valid &&
-                    !lsu_exception.valid && (load_result == 32'b0),
-                "idle: no MEM/WB result or exception"
+                !lsu_outstanding && !lsu_exception.valid &&
+                    (load_result == 32'b0),
+                "idle: no LSU state, result or exception"
             );
 
             report_case(errors_before, "reset and idle protocol");
         end
     endtask
 
-    task automatic test_nonmemory_passthrough;
+    task automatic test_nonmemory_quiet;
         int unsigned errors_before;
         begin
             errors_before = error_count;
@@ -554,18 +494,15 @@ module tb_rv32_lsu;
                 '0,
                 "nonmemory instruction does not request data memory"
             );
-            check_mem_wb_from_q(
-                1'b1,
-                32'b0,
-                "nonmemory instruction passes through MEM"
-            );
             check_condition(
-                !ex_request_wait && !mem_response_wait &&
-                    !mem_exception.valid,
+                !dmem_rsp_ready && !response_fire &&
+                    !ex_request_wait && !mem_response_wait &&
+                    !lsu_outstanding && !lsu_exception.valid &&
+                    (load_result == 32'b0),
                 "nonmemory instruction has no LSU event"
             );
 
-            report_case(errors_before, "nonmemory MEM/WB passthrough");
+            report_case(errors_before, "nonmemory instruction is LSU-quiet");
         end
     endtask
 
@@ -612,7 +549,7 @@ module tb_rv32_lsu;
             dmem_rsp_error   = 1'b1;
             settle();
             check_condition(
-                !dmem_rsp_ready && !mem_exception.valid &&
+                !dmem_rsp_ready && !response_fire &&
                     !lsu_exception.valid,
                 "response without outstanding request must be ignored"
             );
@@ -668,13 +605,13 @@ module tb_rv32_lsu;
             dmem_req_ready   = 1'b0;
             settle();
             check_condition(
-                dut.outstanding_q && dmem_rsp_ready && mem_response_wait,
+                lsu_outstanding && dmem_rsp_ready &&
+                    mem_response_wait && !response_fire,
                 "accepted load waits in MEM for its response"
             );
-            check_mem_wb_from_q(
-                1'b0,
-                '0,
-                "load must not reach WB before its response"
+            check_condition(
+                !lsu_exception.valid,
+                "waiting load raised an LSU exception before response fire"
             );
 
             report_case(errors_before, "load request backpressure");
@@ -807,13 +744,10 @@ module tb_rv32_lsu;
             for (cycle = 0; cycle < 3; cycle++) begin
                 settle();
                 check_condition(
-                    !dmem_req_valid && dmem_rsp_ready && mem_response_wait,
+                    !dmem_req_valid && dmem_rsp_ready &&
+                        mem_response_wait && !response_fire &&
+                        !lsu_exception.valid,
                     "accepted store waits without repeating its request"
-                );
-                check_mem_wb_from_q(
-                    1'b0,
-                    '0,
-                    "store must not retire before completion response"
                 );
                 tick();
             end
@@ -822,24 +756,16 @@ module tb_rv32_lsu;
             dmem_rsp_rdata = 32'hdead_beef;
             settle();
             check_condition(
-                dmem_rsp_ready && !mem_response_wait,
+                dmem_rsp_ready && response_fire &&
+                    !mem_response_wait && !lsu_exception.valid,
                 "store completion response is accepted"
-            );
-            check_mem_wb_from_q(
-                1'b1,
-                32'b0,
-                "completed store reaches WB exactly once"
-            );
-            check_condition(
-                !mem_wb_candidate.wb_ctrl.register_write,
-                "completed store does not write a register"
             );
 
             tick();
             dmem_rsp_valid = 1'b0;
             settle();
             check_condition(
-                !dut.outstanding_q && !dmem_rsp_ready,
+                !lsu_outstanding && !dmem_rsp_ready && !response_fire,
                 "store transaction state clears after completion"
             );
 
@@ -867,9 +793,9 @@ module tb_rv32_lsu;
             dmem_req_ready = 1'b0;
             settle();
 
-            check_mem_wb_from_q(
-                1'b1,
-                32'h1234_5678,
+            check_condition(
+                response_fire && (load_result == 32'h1234_5678) &&
+                    !lsu_exception.valid,
                 "old response completes while next request is blocked"
             );
             check_request(
@@ -890,14 +816,15 @@ module tb_rv32_lsu;
             ex_mem_q       = '0;
             settle();
             check_condition(
-                !dut.outstanding_q && dmem_req_valid && ex_request_wait,
+                !lsu_outstanding && !response_fire &&
+                    dmem_req_valid && ex_request_wait,
                 "blocked next request remains in EX after old response"
             );
 
             dmem_req_ready = 1'b1;
             tick();
             check_condition(
-                dut.outstanding_q,
+                lsu_outstanding,
                 "blocked next request is accepted later"
             );
 
@@ -928,10 +855,11 @@ module tb_rv32_lsu;
             dmem_req_ready = 1'b1;
             settle();
 
-            check_mem_wb_from_q(
-                1'b1,
-                32'ha5a5_5a5a,
-                "back-to-back old load response"
+            check_condition(
+                response_fire && dut.request_fire &&
+                    (load_result == 32'ha5a5_5a5a) &&
+                    !lsu_exception.valid,
+                "back-to-back response and next request both fire"
             );
             check_request(
                 1'b1,
@@ -954,7 +882,8 @@ module tb_rv32_lsu;
             settle();
 
             check_condition(
-                dut.outstanding_q && dmem_rsp_ready && mem_response_wait,
+                lsu_outstanding && dmem_rsp_ready &&
+                    mem_response_wait && !response_fire,
                 "new transaction replaces the completed transaction"
             );
 
@@ -980,37 +909,33 @@ module tb_rv32_lsu;
             dmem_rsp_valid = 1'b1;
             dmem_rsp_error = 1'b1;
             dmem_req_ready = 1'b1;
+            // The MEM-boundary owner converts this LSU fault into the
+            // authoritative same-cycle younger-request block.
+            ex_request_block = 1'b1;
             settle();
 
             check_condition(
-                mem_exception.valid &&
-                    mem_exception.cause ===
+                response_fire &&
+                    lsu_exception.valid &&
+                    lsu_exception.cause ===
                         EXCEPTION_CAUSE_LOAD_ACCESS_FAULT &&
-                    mem_exception.value === 32'h0000_9000,
+                    lsu_exception.value === 32'h0000_9000,
                 "load access fault metadata"
             );
             check_condition(
-                lsu_exception === mem_exception,
-                "load access fault is exposed as pure LSU exception"
-            );
-            check_condition(
-                !mem_wb_candidate.valid,
-                "faulting load invalidates the MEM/WB candidate"
-            );
-            check_condition(
                 !dmem_req_valid && !ex_request_wait,
-                "older load fault suppresses younger store request"
+                "external MEM block suppresses the younger store request"
             );
 
             tick();
             check_condition(
-                !dut.outstanding_q,
+                !lsu_outstanding && !response_fire,
                 "faulting response clears outstanding state"
             );
 
             report_case(
                 errors_before,
-                "load access fault suppresses younger store"
+                "load access fault and external request block"
             );
         end
     endtask
@@ -1031,64 +956,44 @@ module tb_rv32_lsu;
             settle();
 
             check_condition(
-                mem_exception.valid &&
-                    mem_exception.cause ===
+                response_fire &&
+                    lsu_exception.valid &&
+                    lsu_exception.cause ===
                         EXCEPTION_CAUSE_STORE_ACCESS_FAULT &&
-                    mem_exception.value === 32'h0000_a000,
+                    lsu_exception.value === 32'h0000_a000,
                 "store access fault metadata"
             );
+
+            tick();
+            dmem_rsp_valid = 1'b0;
+            dmem_rsp_error = 1'b0;
+            settle();
             check_condition(
-                lsu_exception === mem_exception,
-                "store access fault is exposed as pure LSU exception"
-            );
-            check_condition(
-                !mem_wb_candidate.valid,
-                "faulting store invalidates the MEM/WB candidate"
+                !lsu_outstanding && !response_fire &&
+                    !lsu_exception.valid,
+                "store access fault completed exactly once"
             );
 
-            report_case(errors_before, "store access fault");
-        end
-    endtask
-
-    task automatic test_incoming_exception_priority;
-        int unsigned errors_before;
-        begin
-            errors_before = error_count;
+            // Exception merge priority belongs to rv32_mem_commit. LSU only
+            // guarantees it never relabels a packet with an existing fault.
             reset_dut();
-
-            ex_mem_q                   = '0;
-            ex_mem_q.valid             = 1'b1;
-            ex_mem_q.pc                = 32'h0000_0a00;
-            ex_mem_q.exception.valid   = 1'b1;
-            ex_mem_q.exception.cause   = 32'h1234_5678;
-            ex_mem_q.exception.value   = 32'h8765_4321;
-            ex_mem_q.wb_ctrl.register_write = 1'b1;
-
             set_memory_candidate(
-                1'b0, 1'b1, MEM_SIZE_WORD, 1'b0,
-                32'h0000_b000, 32'hdead_beef, 32'h0000_0a04
+                1'b1, 1'b0, MEM_SIZE_WORD, 1'b0,
+                32'h0000_a100, '0, 32'h0000_0904
             );
-            dmem_req_ready = 1'b1;
+            accept_candidate_into_mem();
+            ex_mem_q.exception.valid = 1'b1;
+            ex_mem_q.exception.cause = EXCEPTION_CAUSE_ILLEGAL_INSTRUCTION;
+            dmem_rsp_valid = 1'b1;
+            dmem_rsp_error = 1'b1;
             settle();
 
             check_condition(
-                mem_exception === ex_mem_q.exception,
-                "incoming MEM exception metadata keeps priority"
-            );
-            check_condition(
-                !lsu_exception.valid,
-                "incoming early exception is not mislabeled as LSU fault"
-            );
-            check_condition(
-                !mem_wb_candidate.valid,
-                "incoming exception invalidates the MEM/WB candidate"
-            );
-            check_condition(
-                !dmem_req_valid,
-                "incoming exception suppresses younger memory request"
+                response_fire && !lsu_exception.valid,
+                "packet with an existing exception was relabeled as LSU fault"
             );
 
-            report_case(errors_before, "incoming exception priority");
+            report_case(errors_before, "store access fault qualification");
         end
     endtask
 
@@ -1108,20 +1013,23 @@ module tb_rv32_lsu;
                 "pre-reset transaction must be waiting"
             );
 
-            rst = 1'b1;
+            dmem_rsp_valid = 1'b1;
+            rst            = 1'b1;
             settle();
             check_condition(
-                !dmem_req_valid && !dmem_rsp_ready && !mem_response_wait,
+                !dmem_req_valid && !dmem_rsp_ready && !response_fire &&
+                    !mem_response_wait,
                 "reset immediately gates the active transaction"
             );
             tick();
 
-            ex_mem_q = '0;
-            rst      = 1'b0;
+            ex_mem_q       = '0;
+            dmem_rsp_valid = 1'b0;
+            rst            = 1'b0;
             settle();
             check_condition(
-                !dut.outstanding_q && !dmem_rsp_ready &&
-                    !mem_response_wait,
+                !lsu_outstanding && !dmem_rsp_ready &&
+                    !response_fire && !mem_response_wait,
                 "reset permanently clears outstanding state"
             );
 

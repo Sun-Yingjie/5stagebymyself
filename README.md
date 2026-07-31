@@ -59,7 +59,7 @@ BUILD_ROOT=/tmp/rv32-build scripts/run_regression.sh
 当前确定性 RTL 回归结果为：
 
 ```text
-15/15 unit TBs passed
+18/18 unit TBs passed
 Icarus core:    51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,
                  27/25 MDU req/rsp, 17 interrupts, 25528 checks
 Verilator core: 51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,
@@ -97,7 +97,15 @@ GitHub Actions 在 Pull Request、推送到 `main` 和手动触发时运行同�
 ```text
 README.md
 LICENSE
-rtl/                         Core RTL
+rtl/                         按职责分层的 Core RTL
+├── common/                  package 与公共类型
+├── core/                    顶层、forwarding 控制与全局流水控制
+├── ifu/                     取指级
+├── idu/                     译码、立即数与寄存器堆
+├── execute/                 执行级、ALU、branch 与 MDU
+├── memory/                  LSU 与 MEM commit
+├── writeback/               写回级
+└── csr/                     CSR 运算与 trap/interrupt 状态
 tb/unit/                     叶子模块 self-checking TB
 tb/core/                     Core TB、scoreboard、存储模型
 filelists/rv32_core_rtl.f     唯一 RTL 编译清单

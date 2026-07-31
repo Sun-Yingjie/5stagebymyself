@@ -132,7 +132,9 @@ Machine external > Machine software > Machine timer
 
 正常边界采用 post-commit interrupt：当前 MEM 指令先完成并进入 MEM/WB，entry 保存该指令的架构后继 PC。taken branch/JAL/JALR 保存控制转移目标，普通或 not-taken 指令保存 `pc+4`，MRET 保存提交时读取的返回目标。当前 load/store 不会被取消或重放，年轻 store/MDU/redirect 被抑制。
 
-若四级流水寄存器均无有效指令、LSU 没有 outstanding 且 MDU idle，也可在 empty-pipeline boundary 取 interrupt；此时使用 Core 保存的 `resume_pc_q`，且没有配对 retire。
+若四组级间流水寄存器均无有效指令、LSU 没有 outstanding 且 MDU idle，也可在
+empty-pipeline boundary 取 interrupt；此时使用 Core 保存的 `resume_pc_q`，且没有
+配对 retire。
 
 entry 执行：
 

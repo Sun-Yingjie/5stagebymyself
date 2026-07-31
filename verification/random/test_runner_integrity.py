@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -37,6 +38,28 @@ def result_line(seed: str) -> str:
 
 
 class RunnerIntegrityTest(unittest.TestCase):
+    def test_input_manifest_tracks_filelist_and_all_rtl_sources(self) -> None:
+        filelist = REPO_ROOT / "filelists/rv32_core_rtl.f"
+        filelist_sources = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in RUNNER.filelist_sources(filelist)
+        }
+        all_rtl_sources = {
+            path.relative_to(REPO_ROOT).as_posix()
+            for path in (REPO_ROOT / "rtl").rglob("*.sv")
+        }
+        self.assertEqual(filelist_sources, all_rtl_sources)
+
+        manifest = RUNNER.input_manifest()
+        required_inputs = {filelist.relative_to(REPO_ROOT).as_posix()}
+        required_inputs.update(filelist_sources)
+        self.assertTrue(required_inputs.issubset(manifest))
+        for relative_path in required_inputs:
+            expected_sha256 = hashlib.sha256(
+                (REPO_ROOT / relative_path).read_bytes()
+            ).hexdigest()
+            self.assertEqual(manifest[relative_path], expected_sha256)
+
     def test_wrong_reported_seed_is_a_validation_error(self) -> None:
         parsed_results = RUNNER.parse_d5_results(result_line("00000002"))
         _parsed, errors = RUNNER.validate_run_result(

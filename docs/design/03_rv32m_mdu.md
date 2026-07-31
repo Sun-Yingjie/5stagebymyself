@@ -262,9 +262,9 @@ ex_multicycle_wait =
 
 ## 7. EX hold 快照边界
 
-当前 Core 会在 ID/EX HOLD 时保存已完成 forwarding 的 EX candidate。这对普通 ALU
-指令和 DMem request backpressure 是必要的，但不能在 MDU 尚未完成时保存未完成
-结果。
+`rv32_execute_stage` 会在 ID/EX HOLD 时保存已完成 forwarding 的 EX candidate。
+这对普通 ALU 指令和 DMem request backpressure 是必要的，但不能在 MDU 尚未完成时
+保存未完成结果。
 
 集成后快照捕获谓词冻结为：
 
@@ -283,16 +283,17 @@ snapshot_capture =
 - M 指令 RESPONSE 被更老 MEM wait 阻挡：由 MDU response register 保持结果；
 - MDU response 真正被 pipeline 接受后才允许释放。
 
-reset 或任意全局 flush 必须清除遗留 `ex_hold_valid_q`，不能让被取消指令的普通
-snapshot 在后续周期重新成为 active candidate。
+reset 或任意全局 flush 必须让 `rv32_execute_stage` 清除遗留
+`ex_hold_valid_q`，不能让被取消指令的普通 snapshot 在后续周期重新成为 active
+candidate。
 
-不得仅把当前固定的 `ex_multicycle_wait=0` 接线而保留原 snapshot 条件。
+不得把 `ex_multicycle_wait` 固定为 0 而保留原 snapshot 条件。
 
 ## 8. 与较老事件并行
 
 - 较老 DMem wait 时，年轻 MDU 可以继续迭代；
 - MDU 先完成时，response 保持到 MEM wait 解除；
-- 较老同步 trap、MRET 或未来 interrupt 提交时向 MDU发出 `kill`；
+- 较老同步 trap、MRET 或 interrupt 提交时向 MDU 发出 `kill`；
 - 较老 trap 与 MDU response 同周期时，较老 trap 获胜；
 - 被 kill 的 M 指令不得进入 EX/MEM、写 GPR 或退休；
 - reset 在 IDLE/RUN/FINALIZE/RESPONSE 任一状态都清除在途操作。

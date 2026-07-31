@@ -61,6 +61,25 @@ def hash_files(paths: list[Path]) -> dict[str, str]:
     return hashes
 
 
+def read_filelist_sources(filelist: Path) -> list[Path]:
+    sources: list[Path] = []
+    for line_number, raw_line in enumerate(
+        filelist.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.partition("#")[0].partition("//")[0].strip()
+        if not line:
+            continue
+        fields = shlex.split(line)
+        if len(fields) != 1 or fields[0].startswith(("-", "+")):
+            raise Act4Error(
+                f"unsupported filelist syntax at {filelist}:{line_number}: "
+                f"{raw_line}"
+            )
+        path = Path(fields[0])
+        sources.append(path if path.is_absolute() else PROJECT_ROOT / path)
+    return sources
+
+
 def project_input_provenance() -> dict[str, dict[str, str]]:
     program_tb_files = [PROGRAM_FILELIST]
     for line in PROGRAM_FILELIST.read_text(encoding="utf-8").splitlines():
@@ -70,7 +89,7 @@ def project_input_provenance() -> dict[str, dict[str, str]]:
 
     return {
         "dut_rtl_and_filelists": hash_files(
-            [CORE_FILELIST, *sorted((PROJECT_ROOT / "rtl").glob("*.sv"))]
+            [CORE_FILELIST, *read_filelist_sources(CORE_FILELIST)]
         ),
         "program_tb_and_filelist": hash_files(program_tb_files),
         "runner": hash_files([Path(__file__).resolve()]),

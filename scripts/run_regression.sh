@@ -74,15 +74,18 @@ UNIT_NAMES=(
     csr_trap
     csr_decoder
     decoder
+    execute_stage
     exu
     forward_unit
     idu
     ifu
     imm_gen
     lsu
+    mem_commit
     mdu
     pipeline_ctrl
     regfile
+    wbu
 )
 unit_count=0
 unit_total="${#UNIT_NAMES[@]}"
