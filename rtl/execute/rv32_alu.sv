@@ -39,7 +39,9 @@ module rv32_alu (
             end
 
             ALU_SRA: begin
-                result = $signed(operand_a) >>> operand_b[4:0];
+                result = $unsigned(
+                    $signed(operand_a) >>> operand_b[4:0]
+                );
             end
 
             ALU_SLT: begin

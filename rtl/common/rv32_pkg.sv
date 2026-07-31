@@ -73,7 +73,7 @@ package rv32_pkg;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT              = 32'd7;
     localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE         = 32'd11;
 
-    // Machine CSR addresses
+    // Machine CSR addresses (instruction[31:20] in CSR instructions)
     localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
     localparam logic [11:0] CSR_ADDR_MISA       = 12'h301;
     localparam logic [11:0] CSR_ADDR_MIE        = 12'h304;
@@ -94,28 +94,28 @@ package rv32_pkg;
     localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
 
     // Pipeline control
-    typedef enum logic [1:0] {  // how to update pipeline reg
-        PIPE_LOAD           = 2'b00, // update
-        PIPE_HOLD           = 2'b01, // keep
-        PIPE_CLEAR          = 2'b10  // valid = 0
+    typedef enum logic [1:0] {  // Pipeline-register update action
+        PIPE_LOAD           = 2'b00, // update, q_next = candidate
+        PIPE_HOLD           = 2'b01, // keep, q_next = q
+        PIPE_CLEAR          = 2'b10  // q_next.valid = 0
     } pipe_action_e;
 
     // Fetch control
-    typedef enum logic [1:0] { // how to update pc reg
+    typedef enum logic [1:0] { // Fetch-PC update action
         FETCH_RESET         = 2'b00,    // back to RESET_VECTOR
         FETCH_HOLD          = 2'b01,    // keep current pc
-        FETCH_SEQUENTIAL    = 2'b10,    // pc = next pc
+        FETCH_SEQUENTIAL    = 2'b10,    // pc = next pc = pc + 4
         FETCH_REDIRECT      = 2'b11     // pc redirect
     } fetch_action_e;
 
     // Decode control
-    typedef enum logic [2:0] { // sel immediate extend
+    typedef enum logic [2:0] { // Immediate encoding selected for extension
         IMM_NONE            = 3'b000,
-        IMM_I               = 3'b001,
-        IMM_S               = 3'b010,
-        IMM_B               = 3'b011,
-        IMM_U               = 3'b100,
-        IMM_J               = 3'b101
+        IMM_I               = 3'b001, // ALU-immediate, loads, JALR
+        IMM_S               = 3'b010, // Stores
+        IMM_B               = 3'b011, // Conditional branches
+        IMM_U               = 3'b100, // LUI, AUIPC
+        IMM_J               = 3'b101  // JAL
     } immediate_type_e;
 
     // Execute control
@@ -184,7 +184,7 @@ package rv32_pkg;
     } csr_ctrl_t;
 
     typedef enum logic [1:0] { // EX operand forwarding source
-        FWD_REG             = 2'b00, // use ID/EX-captured register operand
+        FWD_REG             = 2'b00, // use ID/EX-captured register operand, from GPR or write bypass
         FWD_EX_MEM          = 2'b01, // use registered EX/MEM producer
         FWD_MEM_WB          = 2'b10  // use registered MEM/WB producer
     } forward_select_e;
