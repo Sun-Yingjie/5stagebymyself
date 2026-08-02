@@ -1,8 +1,8 @@
 module rv32_idu (
-    input logic clk,
-    input rv32_pkg::if_id_t if_id_q,
-    input rv32_pkg::wb_bus_t wb_bus,
-    output rv32_pkg::id_ex_t id_ex_candidate
+    input logic clk,                            // clock for regfile
+    input rv32_pkg::if_id_t if_id_q,            // instr info: valid, pc, instr, pcplus4, exception (valid, cause, value (mtval))
+    input rv32_pkg::wb_bus_t wb_bus,            // write back info: valid, rd_wen, rd_addr, rd_data
+    output rv32_pkg::id_ex_t id_ex_candidate    //
 );
     import rv32_pkg::*;
 
@@ -21,28 +21,30 @@ module rv32_idu (
     assign rs1_addr = if_id_q.instruction[19:15];
     assign rs2_addr = if_id_q.instruction[24:20];
     assign rd_addr = if_id_q.instruction[11:7];
+
     assign regfile_write_enable =
         wb_bus.valid && wb_bus.rd_write_enable;
+
+    // reading and writing the same GPR at the same cycle will use bypass
     assign rs1_wb_bypass =
         regfile_write_enable &&
         (wb_bus.rd_addr != '0) &&
         (wb_bus.rd_addr == rs1_addr);
-
     assign rs2_wb_bypass =
         regfile_write_enable &&
         (wb_bus.rd_addr != '0) &&
         (wb_bus.rd_addr == rs2_addr);
-
     assign rs1_id_data =
         rs1_wb_bypass ? wb_bus.rd_data : rs1_regfile_data;
-
     assign rs2_id_data =
         rs2_wb_bypass ? wb_bus.rd_data : rs2_regfile_data;
+
+    // regfile: 2 asynchronous read port and 1 synchronous write port
     rv32_decoder u_decoder (
         .instruction(if_id_q.instruction),
         .decode_ctrl(decode_ctrl)
     );
-    rv32_imm_gen u_imm_gen (
+    rv32_imm_gen u_imm_gen ( // immediate extend
         .instruction(if_id_q.instruction),
         .immediate_type(decode_ctrl.immediate_type),
         .immediate(immediate)
@@ -77,7 +79,7 @@ module rv32_idu (
 
         id_ex_candidate.mret      = decode_ctrl.mret;
 
-        id_ex_candidate.csr_ctrl = decode_ctrl.csr_ctrl;
+        id_ex_candidate.csr_ctrl = decode_ctrl.csr_ctrl;    // valid, operation, imm, ren, wen
         id_ex_candidate.mdu_ctrl = decode_ctrl.mdu_ctrl;
         if (decode_ctrl.csr_ctrl.valid) begin
             id_ex_candidate.csr_address = if_id_q.instruction[31:20];

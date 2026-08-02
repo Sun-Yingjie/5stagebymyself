@@ -58,13 +58,11 @@ rv32_core
 ├── rv32_ifu
 ├── rv32_idu
 │   ├── rv32_decoder
-│   │   └── rv32_csr_decoder
 │   ├── rv32_imm_gen
 │   └── rv32_regfile
-├── rv32_execute_stage
-│   ├── rv32_exu
-│   │   ├── rv32_alu
-│   │   └── rv32_branch_compare
+├── rv32_exu
+│   ├── rv32_alu
+│   ├── rv32_branch_compare
 │   └── rv32_mdu
 ├── rv32_lsu
 ├── rv32_mem_commit
@@ -75,7 +73,8 @@ rv32_core
 └── rv32_pipeline_ctrl
 ```
 
-`rv32_execute_stage` 封装单周期 EXU 与多周期 MDU 的协议协调；
+`rv32_exu` 是完整的执行阶段顶层，统一完成操作数前递解析、单周期 ALU/分支
+执行、多周期 MDU 协调以及 EX hold 快照；
 `rv32_mem_commit` 合并最终同步异常，并形成动作无关的 MEM/WB candidate 与提交预览；
 `rv32_wbu` 统一形成写回数据、WB bus 和 retire 输出。MEM/WB 流水寄存器及真正的
 `commit_valid` 仍由 `rv32_core` 控制。`rv32_lsu` 只负责 DMem 事务、store lane、
@@ -89,7 +88,7 @@ load 格式化和 LSU access fault，不再重复形成最终异常或 MEM/WB pa
 |---|---|---|
 | `x0`～`x31` | `rv32_regfile` | `x0` 恒为 0，写 `x0` 被抑制 |
 | IF/ID、ID/EX、EX/MEM、MEM/WB | `rv32_core` | 每级以 `valid` 区分真实指令与 bubble |
-| EX hold 快照 | `rv32_execute_stage` | request stall 时固定已完成前递的 EX 结果与 redirect |
+| EX hold 快照 | `rv32_exu` | request stall 时固定已完成前递的 EX 结果与 redirect |
 | 最近提交边界的 resume PC | `rv32_core` | 为 empty-pipeline interrupt 保存下一架构 PC |
 | IMem pending/outstanding/stale | `rv32_ifu` | 维持取指请求并排空错误路径响应 |
 | DMem outstanding | `rv32_lsu` | 维护单笔数据事务生命周期 |

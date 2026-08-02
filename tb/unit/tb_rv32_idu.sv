@@ -717,10 +717,14 @@ module tb_rv32_idu;
         input string case_name
     );
         ex_ctrl_t expected_ex_ctrl;
+        mem_ctrl_t expected_mem_ctrl;
         begin
             expected_ex_ctrl = '0;
             expected_ex_ctrl.operand_a_select = OPA_ZERO;
             expected_ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+            expected_mem_ctrl = '0;
+            expected_mem_ctrl.memory_size = MEM_SIZE_WORD;
 
             #1ns;
             if (
@@ -733,7 +737,7 @@ module tb_rv32_idu;
                 (id_ex_candidate.csr_ctrl !== '0) ||
                 (id_ex_candidate.mdu_ctrl !== '0) ||
                 (id_ex_candidate.ex_ctrl !== expected_ex_ctrl) ||
-                (id_ex_candidate.mem_ctrl !== '0) ||
+                (id_ex_candidate.mem_ctrl !== expected_mem_ctrl) ||
                 (id_ex_candidate.wb_ctrl !== '0)
             ) begin
                 error_count++;

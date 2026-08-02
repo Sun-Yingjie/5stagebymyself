@@ -127,6 +127,30 @@ module tb_rv32_alu;
         );
 
         check_alu(
+            ALU_SRA,
+            32'h7fff_ffff,
+            32'h0000_0001,
+            32'h3fff_ffff,
+            "sra positive maximum"
+        );
+
+        check_alu(
+            ALU_SRA,
+            32'hffff_ffff,
+            32'h0000_001f,
+            32'hffff_ffff,
+            "sra negative one by 31"
+        );
+
+        check_alu(
+            ALU_SRA,
+            32'h8000_0000,
+            32'h0000_001f,
+            32'hffff_ffff,
+            "sra minimum by 31"
+        );
+
+        check_alu(
             ALU_SLT,
             32'hffff_ffff,
             32'h0000_0001,

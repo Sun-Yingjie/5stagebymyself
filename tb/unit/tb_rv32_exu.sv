@@ -5,27 +5,70 @@ module tb_rv32_exu;
 
     import rv32_pkg::*;
 
-    id_ex_t     id_ex_q;
-    logic [31:0] rs1_exec;
-    logic [31:0] rs2_exec;
+    logic clk;
+    logic rst;
 
-    ex_mem_t  ex_mem_candidate;
-    redirect_t raw_redirect;
+    id_ex_t          id_ex_q;
+    forward_select_e rs1_forward_select;
+    forward_select_e rs2_forward_select;
+    ex_mem_t         ex_mem_q;
+    logic [31:0]     mem_wb_forward_data;
+    pipe_action_e    id_ex_action;
+    pipe_action_e    ex_mem_action;
+    logic            execute_kill;
+
+    ex_mem_t         ex_mem_candidate;
+    redirect_t       raw_redirect;
+    logic            ex_hold_valid;
+    logic            ex_multicycle_wait;
+    logic            mdu_idle;
+    logic            mdu_req_valid;
+    logic            mdu_req_ready;
+    logic            mdu_rsp_valid;
+    logic            mdu_rsp_ready;
+    logic [31:0]     mdu_rsp_result;
+    logic            mdu_kill;
 
     ex_mem_t expected_candidate;
 
     int unsigned error_count;
 
     rv32_exu dut (
-        .id_ex_q          (id_ex_q),
-        .rs1_exec         (rs1_exec),
-        .rs2_exec         (rs2_exec),
-        .ex_mem_candidate (ex_mem_candidate),
-        .raw_redirect     (raw_redirect)
+        .clk                 (clk),
+        .rst                 (rst),
+        .id_ex_q             (id_ex_q),
+        .rs1_forward_select  (rs1_forward_select),
+        .rs2_forward_select  (rs2_forward_select),
+        .ex_mem_q            (ex_mem_q),
+        .mem_wb_forward_data (mem_wb_forward_data),
+        .id_ex_action        (id_ex_action),
+        .ex_mem_action       (ex_mem_action),
+        .execute_kill        (execute_kill),
+        .ex_mem_candidate    (ex_mem_candidate),
+        .raw_redirect        (raw_redirect),
+        .ex_hold_valid       (ex_hold_valid),
+        .ex_multicycle_wait  (ex_multicycle_wait),
+        .mdu_idle            (mdu_idle),
+        .mdu_req_valid       (mdu_req_valid),
+        .mdu_req_ready       (mdu_req_ready),
+        .mdu_rsp_valid       (mdu_rsp_valid),
+        .mdu_rsp_ready       (mdu_rsp_ready),
+        .mdu_rsp_result      (mdu_rsp_result),
+        .mdu_kill            (mdu_kill)
     );
 
     initial begin
+        clk = 1'b0;
+        forever #5ns clk = ~clk;
+    end
+
+    initial begin
+        rst         = 1'b1;
         error_count = 0;
+        set_defaults();
+        repeat (2) @(posedge clk);
+        @(negedge clk);
+        rst = 1'b0;
 
         test_basic_add();
         test_mixed_resolved_operands();
@@ -68,8 +111,13 @@ module tb_rv32_exu;
     task automatic set_defaults;
         begin
             id_ex_q            = '0;
-            rs1_exec           = 32'b0;
-            rs2_exec           = 32'b0;
+            rs1_forward_select = FWD_REG;
+            rs2_forward_select = FWD_REG;
+            ex_mem_q           = '0;
+            mem_wb_forward_data = '0;
+            id_ex_action       = PIPE_LOAD;
+            ex_mem_action      = PIPE_LOAD;
+            execute_kill       = 1'b0;
             expected_candidate = '0;
         end
     endtask
@@ -162,7 +210,7 @@ module tb_rv32_exu;
                 {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
                 5'd1
             );
-            rs1_exec = 32'h1111_1111;
+            id_ex_q.rs1_data = 32'h1111_1111;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
@@ -173,12 +221,12 @@ module tb_rv32_exu;
             expected_candidate.csr_source = 32'h1111_1111;
             check_outputs(1'b0, 32'b0, "CSR source uses resolved rs1 value");
 
-            rs1_exec = 32'h2222_2222;
+            id_ex_q.rs1_data = 32'h2222_2222;
             build_expected_candidate(32'h2222_2222, 32'b0);
             expected_candidate.csr_source = 32'h2222_2222;
             check_outputs(1'b0, 32'b0, "CSR source tracks resolved rs1 changes");
 
-            rs1_exec = 32'h3333_3333;
+            id_ex_q.rs1_data = 32'h3333_3333;
             build_expected_candidate(32'h3333_3333, 32'b0);
             expected_candidate.csr_source = 32'h3333_3333;
             check_outputs(1'b0, 32'b0, "CSR source consumes final resolved rs1");
@@ -193,14 +241,14 @@ module tb_rv32_exu;
                 {12'h305, 5'd31, FUNCT3_CSRRWI, 5'd2, OPCODE_SYSTEM},
                 5'd2
             );
-            rs1_exec = 32'hffff_ffff;
+            id_ex_q.rs1_data = 32'hffff_ffff;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.use_immediate = 1'b1;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
             id_ex_q.csr_ctrl.write_enable = 1'b1;
             id_ex_q.csr_address = 12'h305;
-            rs1_exec = 32'haaaa_aaaa;
+            id_ex_q.rs1_data = 32'haaaa_aaaa;
 
             build_expected_candidate(32'haaaa_aaaa, 32'b0);
             expected_candidate.csr_source = 32'd31;
@@ -220,7 +268,7 @@ module tb_rv32_exu;
                 {12'h300, 5'd5, FUNCT3_CSRRW, 5'd1, OPCODE_SYSTEM},
                 5'd1
             );
-            rs1_exec = 32'hdead_beef;
+            id_ex_q.rs1_data = 32'hdead_beef;
             id_ex_q.csr_ctrl.valid = 1'b1;
             id_ex_q.csr_ctrl.operation = CSR_WRITE;
             id_ex_q.csr_ctrl.read_enable = 1'b1;
@@ -287,8 +335,8 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            rs1_exec = 32'd10;
-            rs2_exec = 32'd20;
+            id_ex_q.rs1_data = 32'd10;
+            id_ex_q.rs2_data = 32'd20;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -310,8 +358,8 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            rs1_exec = 32'd16;
-            rs2_exec = 32'd3;
+            id_ex_q.rs1_data = 32'd16;
+            id_ex_q.rs2_data = 32'd3;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.alu_operation = ALU_SUB;
@@ -334,8 +382,8 @@ module tb_rv32_exu;
                 5'd7
             );
 
-            rs1_exec = 32'd20;
-            rs2_exec = 32'd5;
+            id_ex_q.rs1_data = 32'd20;
+            id_ex_q.rs2_data = 32'd5;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.ex_ctrl.alu_operation = ALU_SUB;
@@ -398,8 +446,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'h0000_1000;
-            rs2_exec = 32'hdead_beef;
+            id_ex_q.rs1_data = 32'h0000_1000;
+            id_ex_q.rs2_data = 32'hdead_beef;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0010;
@@ -426,8 +474,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'd7;
-            rs2_exec = 32'd7;
+            id_ex_q.rs1_data = 32'd7;
+            id_ex_q.rs2_data = 32'd7;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0040;
@@ -454,8 +502,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'd9;
-            rs2_exec = 32'd9;
+            id_ex_q.rs1_data = 32'd9;
+            id_ex_q.rs2_data = 32'd9;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'd2;
@@ -489,8 +537,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'd7;
-            rs2_exec = 32'd8;
+            id_ex_q.rs1_data = 32'd7;
+            id_ex_q.rs2_data = 32'd8;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.uses_rs2 = 1'b1;
             id_ex_q.immediate = 32'h0000_0002;
@@ -567,7 +615,7 @@ module tb_rv32_exu;
                 5'd1
             );
 
-            rs1_exec = 32'h0000_1001;
+            id_ex_q.rs1_data = 32'h0000_1001;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.immediate = 32'd4;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -596,7 +644,7 @@ module tb_rv32_exu;
                 5'd1
             );
 
-            rs1_exec = 32'h0000_1003;
+            id_ex_q.rs1_data = 32'h0000_1003;
             id_ex_q.uses_rs1 = 1'b1;
             id_ex_q.immediate = 32'd4;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
@@ -632,7 +680,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            rs1_exec = 32'h0000_1001;
+            id_ex_q.rs1_data = 32'h0000_1001;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -662,7 +710,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            rs1_exec = 32'h0000_1003;
+            id_ex_q.rs1_data = 32'h0000_1003;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -685,7 +733,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            rs1_exec = 32'h0000_1002;
+            id_ex_q.rs1_data = 32'h0000_1002;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -712,7 +760,7 @@ module tb_rv32_exu;
                 5'd5
             );
 
-            rs1_exec = 32'h0000_1002;
+            id_ex_q.rs1_data = 32'h0000_1002;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -742,8 +790,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'h0000_1002;
-            rs2_exec = 32'hdead_beef;
+            id_ex_q.rs1_data = 32'h0000_1002;
+            id_ex_q.rs2_data = 32'hdead_beef;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -771,8 +819,8 @@ module tb_rv32_exu;
                 5'd0
             );
 
-            rs1_exec = 32'h0000_1001;
-            rs2_exec = 32'hdead_beef;
+            id_ex_q.rs1_data = 32'h0000_1001;
+            id_ex_q.rs2_data = 32'hdead_beef;
             id_ex_q.immediate = 32'b0;
             id_ex_q.ex_ctrl.operand_a_select = OPA_RS1;
             id_ex_q.ex_ctrl.operand_b_select = OPB_IMMEDIATE;

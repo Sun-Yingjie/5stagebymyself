@@ -1,24 +1,33 @@
-module rv32_decoder(
-    input logic [31:0]              instruction,
+module rv32_decoder (
+    input  logic [31:0]             instruction,
     output rv32_pkg::decode_ctrl_t  decode_ctrl
 );
 
     import rv32_pkg::*;
 
-    csr_ctrl_t csr_decode_ctrl;
-    logic      csr_decode_uses_rs1;
+    // Name the ISA fields once so the decode tree reads like the encoding
+    // tables instead of repeating raw instruction bit slices.
+    logic [6:0] opcode;
+    logic [2:0] funct3;
+    logic [6:0] funct7;
+    logic [4:0] rs1_or_zimm;
+    logic [4:0] rd_addr;
 
-    rv32_csr_decoder u_csr_decoder (
-        .instruction (instruction),
-        .csr_ctrl    (csr_decode_ctrl),
-        .uses_rs1   (csr_decode_uses_rs1)
-    );
+    logic instruction_legal;
+    logic subdecode_legal;
+
+    assign opcode      = instruction[6:0];
+    assign funct3      = instruction[14:12];
+    assign funct7      = instruction[31:25];
+    assign rs1_or_zimm = instruction[19:15];
+    assign rd_addr     = instruction[11:7];
 
     always_comb begin
+        // Canonical inactive controls. A decode leaf only enables the state
+        // changes that belong to a recognized instruction encoding.
         decode_ctrl = '0;
 
         decode_ctrl.immediate_type = IMM_NONE;
-        decode_ctrl.illegal_instruction = 1'b1;
 
         decode_ctrl.ex_ctrl.operand_a_select = OPA_RS1;
         decode_ctrl.ex_ctrl.operand_b_select = OPB_RS2;
@@ -28,9 +37,16 @@ module rv32_decoder(
         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_WORD;
 
         decode_ctrl.wb_ctrl.writeback_select = WB_EXEC;
-        case (instruction[6:0])
+
+        instruction_legal = 1'b0;
+        subdecode_legal   = 1'b0;
+
+        case (opcode)
+            // -----------------------------------------------------------------
+            // Upper-immediate instructions
+            // -----------------------------------------------------------------
             OPCODE_LUI: begin
-                decode_ctrl.illegal_instruction = 1'b0;
+                instruction_legal = 1'b1;
                 decode_ctrl.immediate_type = IMM_U;
 
                 decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
@@ -40,7 +56,7 @@ module rv32_decoder(
             end
 
             OPCODE_AUIPC: begin
-                decode_ctrl.illegal_instruction = 1'b0;
+                instruction_legal = 1'b1;
                 decode_ctrl.immediate_type = IMM_U;
 
                 decode_ctrl.ex_ctrl.operand_a_select = OPA_PC;
@@ -49,8 +65,11 @@ module rv32_decoder(
                 decode_ctrl.wb_ctrl.register_write = 1'b1;
             end
 
+            // -----------------------------------------------------------------
+            // Control-flow instructions
+            // -----------------------------------------------------------------
             OPCODE_JAL: begin
-                decode_ctrl.illegal_instruction = 1'b0;
+                instruction_legal = 1'b1;
                 decode_ctrl.immediate_type = IMM_J;
 
                 decode_ctrl.ex_ctrl.operand_a_select = OPA_PC;
@@ -62,8 +81,8 @@ module rv32_decoder(
             end
 
             OPCODE_JALR: begin
-                if (instruction[14:12] == FUNCT3_JALR) begin
-                    decode_ctrl.illegal_instruction = 1'b0;
+                if (funct3 == FUNCT3_JALR) begin
+                    instruction_legal = 1'b1;
                     decode_ctrl.uses_rs1 = 1'b1;
                     decode_ctrl.immediate_type = IMM_I;
 
@@ -78,85 +97,74 @@ module rv32_decoder(
             end
 
             OPCODE_BRANCH: begin
-                decode_ctrl.uses_rs1 = 1'b1;
-                decode_ctrl.uses_rs2 = 1'b1;
-                decode_ctrl.immediate_type = IMM_B;
+                subdecode_legal = 1'b1;
 
-                decode_ctrl.ex_ctrl.operand_a_select = OPA_PC;
-                decode_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
-
-                case (instruction[14:12])
-                    FUNCT3_BEQ: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                case (funct3)
+                    FUNCT3_BEQ:
                         decode_ctrl.ex_ctrl.branch_operation = BR_EQ;
-                    end
 
-                    FUNCT3_BNE: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_BNE:
                         decode_ctrl.ex_ctrl.branch_operation = BR_NE;
-                    end
 
-                    FUNCT3_BLT: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_BLT:
                         decode_ctrl.ex_ctrl.branch_operation = BR_LT;
-                    end
 
-                    FUNCT3_BGE: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_BGE:
                         decode_ctrl.ex_ctrl.branch_operation = BR_GE;
-                    end
 
-                    FUNCT3_BLTU: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_BLTU:
                         decode_ctrl.ex_ctrl.branch_operation = BR_LTU;
-                    end
 
-                    FUNCT3_BGEU: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_BGEU:
                         decode_ctrl.ex_ctrl.branch_operation = BR_GEU;
-                    end
 
-                    default: begin
-                        decode_ctrl.illegal_instruction = 1'b1;
-                    end
+                    default:
+                        subdecode_legal = 1'b0;
                 endcase
+
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
+                    decode_ctrl.uses_rs1 = 1'b1;
+                    decode_ctrl.uses_rs2 = 1'b1;
+                    decode_ctrl.immediate_type = IMM_B;
+
+                    decode_ctrl.ex_ctrl.operand_a_select = OPA_PC;
+                    decode_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+                end
             end
 
+            // -----------------------------------------------------------------
+            // Memory instructions
+            // -----------------------------------------------------------------
             OPCODE_LOAD: begin
-                case (instruction[14:12])
-                    FUNCT3_LB: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                subdecode_legal = 1'b1;
+
+                case (funct3)
+                    FUNCT3_LB:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_BYTE;
-                    end
 
-                    FUNCT3_LH: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_LH:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_HALF;
-                    end
 
-                    FUNCT3_LW: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_LW:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_WORD;
-                    end
 
                     FUNCT3_LBU: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_BYTE;
                         decode_ctrl.mem_ctrl.load_unsigned = 1'b1;
                     end
 
                     FUNCT3_LHU: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_HALF;
                         decode_ctrl.mem_ctrl.load_unsigned = 1'b1;
                     end
 
-                    default: begin
-                        decode_ctrl.illegal_instruction = 1'b1;
-                    end
+                    default:
+                        subdecode_legal = 1'b0;
                 endcase
 
-                if (!decode_ctrl.illegal_instruction) begin
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
                     decode_ctrl.uses_rs1 = 1'b1;
                     decode_ctrl.immediate_type = IMM_I;
 
@@ -171,28 +179,24 @@ module rv32_decoder(
             end
 
             OPCODE_STORE: begin
-                case (instruction[14:12])
-                    FUNCT3_SB: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                subdecode_legal = 1'b1;
+
+                case (funct3)
+                    FUNCT3_SB:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_BYTE;
-                    end
 
-                    FUNCT3_SH: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_SH:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_HALF;
-                    end
 
-                    FUNCT3_SW: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_SW:
                         decode_ctrl.mem_ctrl.memory_size = MEM_SIZE_WORD;
-                    end
 
-                    default: begin
-                        decode_ctrl.illegal_instruction = 1'b1;
-                    end
+                    default:
+                        subdecode_legal = 1'b0;
                 endcase
 
-                if (!decode_ctrl.illegal_instruction) begin
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
                     decode_ctrl.uses_rs1 = 1'b1;
                     decode_ctrl.uses_rs2 = 1'b1;
                     decode_ctrl.immediate_type = IMM_S;
@@ -205,132 +209,67 @@ module rv32_decoder(
             end
 
             OPCODE_MISC_MEM: begin
-                if (instruction[14:12] == FUNCT3_FENCE) begin
-                    // This in-order, blocking memory system already provides
-                    // conservative FENCE ordering. Keep the instruction valid
-                    // for retirement, but add no architectural side effects.
-                    // This implementation conservatively treats every
-                    // fm/pred/succ combination as a full fence; base RV32I
-                    // also requires rs1/rd and reserved configurations to be
-                    // accepted rather than decoded as illegal.
-                    decode_ctrl.illegal_instruction = 1'b0;
+                if (funct3 == FUNCT3_FENCE) begin
+                    // The in-order blocking memory system already provides
+                    // conservative FENCE ordering. All fm/pred/succ/rs1/rd
+                    // combinations retire without additional side effects.
+                    instruction_legal = 1'b1;
                     decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
                     decode_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
                 end
             end
 
-            OPCODE_SYSTEM: begin
-                case (instruction)
-                    INSTRUCTION_ECALL: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
-                        decode_ctrl.environment_call = 1'b1;
-                    end
-
-                    INSTRUCTION_EBREAK: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
-                        decode_ctrl.breakpoint = 1'b1;
-                    end
-
-                    INSTRUCTION_MRET: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
-                        decode_ctrl.mret = 1'b1;
-                        decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
-                        decode_ctrl.ex_ctrl.operand_b_select =
-                            OPB_IMMEDIATE;
-                        decode_ctrl.mem_ctrl = '0;
-                    end
-
-                    INSTRUCTION_WFI: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
-                        decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
-                        decode_ctrl.ex_ctrl.operand_b_select =
-                            OPB_IMMEDIATE;
-                        decode_ctrl.mem_ctrl = '0;
-                    end
-
-                    default: begin
-                        if (csr_decode_ctrl.valid) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
-                            decode_ctrl.uses_rs1 =
-                                csr_decode_uses_rs1;
-                            decode_ctrl.csr_ctrl = csr_decode_ctrl;
-
-                            // CSR instructions do not consume the main ALU
-                            // result. Drive its unused path deterministically.
-                            decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
-                            decode_ctrl.ex_ctrl.operand_b_select =
-                                OPB_IMMEDIATE;
-
-                            decode_ctrl.wb_ctrl.register_write = 1'b1;
-                            decode_ctrl.wb_ctrl.writeback_select = WB_CSR;
-                        end
-                    end
-                endcase
-            end
-
+            // -----------------------------------------------------------------
+            // Integer execution instructions
+            // -----------------------------------------------------------------
             OPCODE_OP_IMM: begin
-                case (instruction[14:12])
-                    FUNCT3_ADD_SUB: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                subdecode_legal = 1'b1;
+
+                case (funct3)
+                    FUNCT3_ADD_SUB:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_ADD;
-                    end
 
                     FUNCT3_SLL: begin
-                        if (instruction[31:25] == FUNCT7_BASE) begin
-                            decode_ctrl.illegal_instruction = 1'b0;
+                        if (funct7 == FUNCT7_BASE)
                             decode_ctrl.ex_ctrl.alu_operation = ALU_SLL;
-                        end
+                        else
+                            subdecode_legal = 1'b0;
                     end
 
-                    FUNCT3_SLT: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_SLT:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_SLT;
-                    end
 
-                    FUNCT3_SLTU: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_SLTU:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_SLTU;
-                    end
 
-                    FUNCT3_XOR: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_XOR:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_XOR;
-                    end
 
                     FUNCT3_SRL_SRA: begin
-                        case (instruction[31:25])
-                            FUNCT7_BASE: begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                        case (funct7)
+                            FUNCT7_BASE:
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_SRL;
-                            end
 
-                            FUNCT7_SUB_SRA: begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            FUNCT7_SUB_SRA:
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_SRA;
-                            end
 
-                            default: begin
-                                decode_ctrl.illegal_instruction = 1'b1;
-                            end
+                            default:
+                                subdecode_legal = 1'b0;
                         endcase
                     end
 
-                    FUNCT3_OR: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_OR:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_OR;
-                    end
 
-                    FUNCT3_AND: begin
-                        decode_ctrl.illegal_instruction = 1'b0;
+                    FUNCT3_AND:
                         decode_ctrl.ex_ctrl.alu_operation = ALU_AND;
-                    end
 
-                    default: begin
-                        decode_ctrl.illegal_instruction = 1'b1;
-                    end
+                    default:
+                        subdecode_legal = 1'b0;
                 endcase
 
-                if (!decode_ctrl.illegal_instruction) begin
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
                     decode_ctrl.uses_rs1 = 1'b1;
                     decode_ctrl.immediate_type = IMM_I;
 
@@ -343,111 +282,111 @@ module rv32_decoder(
             end
 
             OPCODE_OP: begin
-                if (instruction[31:25] == FUNCT7_MULDIV) begin
-                    decode_ctrl.illegal_instruction = 1'b0;
+                subdecode_legal = 1'b1;
+
+                if (funct7 == FUNCT7_MULDIV) begin
                     decode_ctrl.mdu_ctrl.valid = 1'b1;
 
-                    case (instruction[14:12])
-                        3'b000: decode_ctrl.mdu_ctrl.operation = MDU_MUL;
-                        3'b001: decode_ctrl.mdu_ctrl.operation = MDU_MULH;
-                        3'b010: decode_ctrl.mdu_ctrl.operation = MDU_MULHSU;
-                        3'b011: decode_ctrl.mdu_ctrl.operation = MDU_MULHU;
-                        3'b100: decode_ctrl.mdu_ctrl.operation = MDU_DIV;
-                        3'b101: decode_ctrl.mdu_ctrl.operation = MDU_DIVU;
-                        3'b110: decode_ctrl.mdu_ctrl.operation = MDU_REM;
-                        3'b111: decode_ctrl.mdu_ctrl.operation = MDU_REMU;
+                    case (funct3)
+                        3'b000:
+                            decode_ctrl.mdu_ctrl.operation = MDU_MUL;
+                        3'b001:
+                            decode_ctrl.mdu_ctrl.operation = MDU_MULH;
+                        3'b010:
+                            decode_ctrl.mdu_ctrl.operation = MDU_MULHSU;
+                        3'b011:
+                            decode_ctrl.mdu_ctrl.operation = MDU_MULHU;
+                        3'b100:
+                            decode_ctrl.mdu_ctrl.operation = MDU_DIV;
+                        3'b101:
+                            decode_ctrl.mdu_ctrl.operation = MDU_DIVU;
+                        3'b110:
+                            decode_ctrl.mdu_ctrl.operation = MDU_REM;
+                        3'b111:
+                            decode_ctrl.mdu_ctrl.operation = MDU_REMU;
                         default: begin
-                            decode_ctrl.illegal_instruction = 1'b1;
+                            subdecode_legal = 1'b0;
                             decode_ctrl.mdu_ctrl = '0;
                         end
                     endcase
-                end else begin
-                    case (instruction[14:12])
+                end
+                else begin
+                    case (funct3)
                         FUNCT3_ADD_SUB: begin
-                            case (instruction[31:25])
-                                FUNCT7_BASE: begin
-                                    decode_ctrl.illegal_instruction = 1'b0;
+                            case (funct7)
+                                FUNCT7_BASE:
                                     decode_ctrl.ex_ctrl.alu_operation = ALU_ADD;
-                                end
 
-                                FUNCT7_SUB_SRA: begin
-                                    decode_ctrl.illegal_instruction = 1'b0;
+                                FUNCT7_SUB_SRA:
                                     decode_ctrl.ex_ctrl.alu_operation = ALU_SUB;
-                                end
 
-                                default: begin
-                                    decode_ctrl.illegal_instruction = 1'b1;
-                                end
+                                default:
+                                    subdecode_legal = 1'b0;
                             endcase
                         end
 
                         FUNCT3_SLL: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_SLL;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
                         FUNCT3_SLT: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_SLT;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
                         FUNCT3_SLTU: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_SLTU;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
                         FUNCT3_XOR: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_XOR;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
                         FUNCT3_SRL_SRA: begin
-                            case (instruction[31:25])
-                                FUNCT7_BASE: begin
-                                    decode_ctrl.illegal_instruction = 1'b0;
+                            case (funct7)
+                                FUNCT7_BASE:
                                     decode_ctrl.ex_ctrl.alu_operation = ALU_SRL;
-                                end
 
-                                FUNCT7_SUB_SRA: begin
-                                    decode_ctrl.illegal_instruction = 1'b0;
+                                FUNCT7_SUB_SRA:
                                     decode_ctrl.ex_ctrl.alu_operation = ALU_SRA;
-                                end
 
-                                default: begin
-                                    decode_ctrl.illegal_instruction = 1'b1;
-                                end
+                                default:
+                                    subdecode_legal = 1'b0;
                             endcase
                         end
 
                         FUNCT3_OR: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_OR;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
                         FUNCT3_AND: begin
-                            if (instruction[31:25] == FUNCT7_BASE) begin
-                                decode_ctrl.illegal_instruction = 1'b0;
+                            if (funct7 == FUNCT7_BASE)
                                 decode_ctrl.ex_ctrl.alu_operation = ALU_AND;
-                            end
+                            else
+                                subdecode_legal = 1'b0;
                         end
 
-                        default: begin
-                            decode_ctrl.illegal_instruction = 1'b1;
-                        end
+                        default:
+                            subdecode_legal = 1'b0;
                     endcase
                 end
 
-                if (!decode_ctrl.illegal_instruction) begin
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
                     decode_ctrl.uses_rs1 = 1'b1;
                     decode_ctrl.uses_rs2 = 1'b1;
 
@@ -459,9 +398,123 @@ module rv32_decoder(
                 end
             end
 
+            // -----------------------------------------------------------------
+            // Environment, privileged, and Zicsr instructions
+            // -----------------------------------------------------------------
+            OPCODE_SYSTEM: begin
+                case (funct3)
+                    3'b000: begin
+                        // These instructions use exact encodings. Other
+                        // privileged encodings remain illegal in this profile.
+                        case (instruction)
+                            INSTRUCTION_ECALL: begin
+                                instruction_legal = 1'b1;
+                                decode_ctrl.environment_call = 1'b1;
+                            end
+
+                            INSTRUCTION_EBREAK: begin
+                                instruction_legal = 1'b1;
+                                decode_ctrl.breakpoint = 1'b1;
+                            end
+
+                            INSTRUCTION_MRET: begin
+                                instruction_legal = 1'b1;
+                                decode_ctrl.mret = 1'b1;
+                                decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                                decode_ctrl.ex_ctrl.operand_b_select =
+                                    OPB_IMMEDIATE;
+                            end
+
+                            INSTRUCTION_WFI: begin
+                                instruction_legal = 1'b1;
+                                decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                                decode_ctrl.ex_ctrl.operand_b_select =
+                                    OPB_IMMEDIATE;
+                            end
+
+                            default: begin
+                            end
+                        endcase
+                    end
+
+                    FUNCT3_CSRRW: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_WRITE;
+                        decode_ctrl.csr_ctrl.read_enable =
+                            (rd_addr != 5'd0);
+                        decode_ctrl.csr_ctrl.write_enable = 1'b1;
+                        decode_ctrl.uses_rs1 = 1'b1;
+                    end
+
+                    FUNCT3_CSRRS: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_SET;
+                        decode_ctrl.csr_ctrl.read_enable = 1'b1;
+                        decode_ctrl.csr_ctrl.write_enable =
+                            (rs1_or_zimm != 5'd0);
+                        decode_ctrl.uses_rs1 = 1'b1;
+                    end
+
+                    FUNCT3_CSRRC: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_CLEAR;
+                        decode_ctrl.csr_ctrl.read_enable = 1'b1;
+                        decode_ctrl.csr_ctrl.write_enable =
+                            (rs1_or_zimm != 5'd0);
+                        decode_ctrl.uses_rs1 = 1'b1;
+                    end
+
+                    FUNCT3_CSRRWI: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_WRITE;
+                        decode_ctrl.csr_ctrl.use_immediate = 1'b1;
+                        decode_ctrl.csr_ctrl.read_enable =
+                            (rd_addr != 5'd0);
+                        decode_ctrl.csr_ctrl.write_enable = 1'b1;
+                    end
+
+                    FUNCT3_CSRRSI: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_SET;
+                        decode_ctrl.csr_ctrl.use_immediate = 1'b1;
+                        decode_ctrl.csr_ctrl.read_enable = 1'b1;
+                        decode_ctrl.csr_ctrl.write_enable =
+                            (rs1_or_zimm != 5'd0);
+                    end
+
+                    FUNCT3_CSRRCI: begin
+                        subdecode_legal = 1'b1;
+                        decode_ctrl.csr_ctrl.operation = CSR_CLEAR;
+                        decode_ctrl.csr_ctrl.use_immediate = 1'b1;
+                        decode_ctrl.csr_ctrl.read_enable = 1'b1;
+                        decode_ctrl.csr_ctrl.write_enable =
+                            (rs1_or_zimm != 5'd0);
+                    end
+
+                    default: begin
+                    end
+                endcase
+
+                if (subdecode_legal) begin
+                    instruction_legal = 1'b1;
+                    decode_ctrl.csr_ctrl.valid = 1'b1;
+
+                    // CSR execution uses its own source and RMW datapath. Keep
+                    // the otherwise-unused integer ALU result deterministic.
+                    decode_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
+                    decode_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
+
+                    decode_ctrl.wb_ctrl.register_write = 1'b1;
+                    decode_ctrl.wb_ctrl.writeback_select = WB_CSR;
+                end
+            end
+
             default: begin
-                decode_ctrl.illegal_instruction = 1'b1;
             end
         endcase
+
+        // Legality is finalized once, after the complete opcode/subopcode tree.
+        decode_ctrl.illegal_instruction = !instruction_legal;
     end
+
 endmodule

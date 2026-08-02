@@ -219,7 +219,7 @@ python3 scripts/run_random_regression.py \
 
 D5 只有同时满足以下条件才完成：
 
-1. 随机关闭时原 15/15 unit 和 51/51 Core directed 双模拟器回归不变；
+1. 随机关闭时当前 17/17 unit 和 51/51 Core directed 双模拟器回归不变；
 2. smoke、release 和 stress 全部零失败、零 timeout；
 3. 同 seed 的 Icarus/Verilator 结果字段一致；
 4. 没有 valid-ready、outstanding、payload stability、scoreboard 或 X/Z 错误；

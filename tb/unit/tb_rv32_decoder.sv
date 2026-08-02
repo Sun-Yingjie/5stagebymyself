@@ -76,6 +76,10 @@ module tb_rv32_decoder;
 
         test_illegal(OPCODE_JALR,   3'b001,        FUNCT7_BASE,
                      "illegal JALR funct3");
+        test_illegal(OPCODE_BRANCH, 3'b010,        FUNCT7_BASE,
+                     "illegal BRANCH funct3 010");
+        test_illegal(OPCODE_BRANCH, 3'b011,        FUNCT7_BASE,
+                     "illegal BRANCH funct3 011");
         test_illegal(OPCODE_LOAD,   3'b111,        FUNCT7_BASE,
                      "illegal LOAD funct3");
         test_illegal(OPCODE_STORE,  3'b111,        FUNCT7_BASE,
@@ -86,6 +90,20 @@ module tb_rv32_decoder;
                      "illegal shift-immediate funct7");
         test_illegal(OPCODE_OP,     FUNCT3_ADD_SUB, 7'b000_0010,
                      "illegal reserved OP funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_SLL,     FUNCT7_SUB_SRA,
+                     "illegal SLL reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_SLT,     FUNCT7_SUB_SRA,
+                     "illegal SLT reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_SLTU,    FUNCT7_SUB_SRA,
+                     "illegal SLTU reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_XOR,     FUNCT7_SUB_SRA,
+                     "illegal XOR reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_SRL_SRA, 7'b000_0010,
+                     "illegal SRL/SRA reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_OR,      FUNCT7_SUB_SRA,
+                     "illegal OR reserved funct7");
+        test_illegal(OPCODE_OP,     FUNCT3_AND,     FUNCT7_SUB_SRA,
+                     "illegal AND reserved funct7");
         test_illegal(OPCODE_MISC_MEM, 3'b001, FUNCT7_BASE,
                      "FENCE.I is illegal without Zifencei");
         test_illegal(7'b111_1111,   3'b000,        FUNCT7_BASE,
@@ -215,7 +233,6 @@ module tb_rv32_decoder;
             expected_ctrl.mret = 1'b1;
             expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
             expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
-            expected_ctrl.mem_ctrl = '0;
             check_decode(
                 INSTRUCTION_MRET,
                 expected_ctrl,
@@ -226,7 +243,6 @@ module tb_rv32_decoder;
             expected_ctrl.illegal_instruction = 1'b0;
             expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
             expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
-            expected_ctrl.mem_ctrl = '0;
             check_decode(
                 INSTRUCTION_WFI,
                 expected_ctrl,
@@ -265,54 +281,95 @@ module tb_rv32_decoder;
     task automatic test_zicsr;
         begin
             test_zicsr_instruction(
-                FUNCT3_CSRRW,
-                CSR_WRITE,
-                1'b0,
-                1'b1,
-                "CSRRW"
+                12'h300, 5'd5, FUNCT3_CSRRW, 5'd1,
+                CSR_WRITE, 1'b0, 1'b1, 1'b1, 1'b1,
+                "CSRRW reads old value and writes source"
             );
             test_zicsr_instruction(
-                FUNCT3_CSRRS,
-                CSR_SET,
-                1'b0,
-                1'b1,
-                "CSRRS"
+                12'h000, 5'd0, FUNCT3_CSRRW, 5'd0,
+                CSR_WRITE, 1'b0, 1'b0, 1'b1, 1'b1,
+                "CSRRW rd=x0 suppresses read but still writes zero"
+            );
+
+            test_zicsr_instruction(
+                12'hfff, 5'd3, FUNCT3_CSRRS, 5'd0,
+                CSR_SET, 1'b0, 1'b1, 1'b1, 1'b1,
+                "CSRRS rd=x0 still reads and sets bits"
             );
             test_zicsr_instruction(
-                FUNCT3_CSRRC,
-                CSR_CLEAR,
-                1'b0,
-                1'b1,
-                "CSRRC"
+                12'h301, 5'd0, FUNCT3_CSRRS, 5'd7,
+                CSR_SET, 1'b0, 1'b1, 1'b0, 1'b1,
+                "CSRRS rs1=x0 is read-only"
+            );
+
+            test_zicsr_instruction(
+                12'h302, 5'd31, FUNCT3_CSRRC, 5'd8,
+                CSR_CLEAR, 1'b0, 1'b1, 1'b1, 1'b1,
+                "CSRRC clears bits from nonzero rs1 field"
             );
             test_zicsr_instruction(
-                FUNCT3_CSRRWI,
-                CSR_WRITE,
-                1'b1,
-                1'b0,
-                "CSRRWI"
+                12'h303, 5'd0, FUNCT3_CSRRC, 5'd0,
+                CSR_CLEAR, 1'b0, 1'b1, 1'b0, 1'b1,
+                "CSRRC rs1=x0 is read-only even with rd=x0"
+            );
+
+            test_zicsr_instruction(
+                12'h304, 5'd0, FUNCT3_CSRRWI, 5'd2,
+                CSR_WRITE, 1'b1, 1'b1, 1'b1, 1'b0,
+                "CSRRWI uimm=0 still writes"
             );
             test_zicsr_instruction(
-                FUNCT3_CSRRSI,
-                CSR_SET,
-                1'b1,
-                1'b0,
-                "CSRRSI"
+                12'h305, 5'd31, FUNCT3_CSRRWI, 5'd0,
+                CSR_WRITE, 1'b1, 1'b0, 1'b1, 1'b0,
+                "CSRRWI rd=x0 suppresses read"
+            );
+
+            test_zicsr_instruction(
+                12'h306, 5'd4, FUNCT3_CSRRSI, 5'd0,
+                CSR_SET, 1'b1, 1'b1, 1'b1, 1'b0,
+                "CSRRSI nonzero uimm writes even with rd=x0"
             );
             test_zicsr_instruction(
-                FUNCT3_CSRRCI,
-                CSR_CLEAR,
-                1'b1,
-                1'b0,
-                "CSRRCI"
+                12'h307, 5'd0, FUNCT3_CSRRSI, 5'd9,
+                CSR_SET, 1'b1, 1'b1, 1'b0, 1'b0,
+                "CSRRSI uimm=0 is read-only"
+            );
+
+            test_zicsr_instruction(
+                12'h308, 5'd31, FUNCT3_CSRRCI, 5'd10,
+                CSR_CLEAR, 1'b1, 1'b1, 1'b1, 1'b0,
+                "CSRRCI clears bits from nonzero uimm"
+            );
+            test_zicsr_instruction(
+                12'h309, 5'd0, FUNCT3_CSRRCI, 5'd0,
+                CSR_CLEAR, 1'b1, 1'b1, 1'b0, 1'b0,
+                "CSRRCI uimm=0 remains a read"
+            );
+
+            set_expected_defaults();
+            check_decode(
+                make_csr_instruction(
+                    12'h300,
+                    5'd1,
+                    FUNCT3_CSRRW,
+                    5'd2,
+                    OPCODE_OP_IMM
+                ),
+                expected_ctrl,
+                "CSR funct3 under non-SYSTEM opcode is not Zicsr"
             );
         end
     endtask
 
     task automatic test_zicsr_instruction (
+        input logic [11:0]    csr_address,
+        input logic [4:0]     source_field,
         input logic [2:0]     funct3,
+        input logic [4:0]     rd_addr,
         input csr_operation_e operation,
         input logic           use_immediate,
+        input logic           read_enable,
+        input logic           write_enable,
         input logic           uses_rs1,
         input string          case_name
     );
@@ -324,8 +381,8 @@ module tb_rv32_decoder;
             expected_ctrl.csr_ctrl.valid = 1'b1;
             expected_ctrl.csr_ctrl.operation = operation;
             expected_ctrl.csr_ctrl.use_immediate = use_immediate;
-            expected_ctrl.csr_ctrl.read_enable = 1'b1;
-            expected_ctrl.csr_ctrl.write_enable = 1'b1;
+            expected_ctrl.csr_ctrl.read_enable = read_enable;
+            expected_ctrl.csr_ctrl.write_enable = write_enable;
 
             expected_ctrl.ex_ctrl.operand_a_select = OPA_ZERO;
             expected_ctrl.ex_ctrl.operand_b_select = OPB_IMMEDIATE;
@@ -334,7 +391,13 @@ module tb_rv32_decoder;
             expected_ctrl.wb_ctrl.writeback_select = WB_CSR;
 
             check_decode(
-                make_csr_instruction(funct3),
+                make_csr_instruction(
+                    csr_address,
+                    source_field,
+                    funct3,
+                    rd_addr,
+                    OPCODE_SYSTEM
+                ),
                 expected_ctrl,
                 case_name
             );
@@ -516,15 +579,19 @@ module tb_rv32_decoder;
     endfunction
 
     function automatic logic [31:0] make_csr_instruction (
-        input logic [2:0] funct3
+        input logic [11:0] csr_address,
+        input logic [4:0]  source_field,
+        input logic [2:0]  funct3,
+        input logic [4:0]  rd_addr,
+        input logic [6:0]  opcode
     );
         begin
             make_csr_instruction = {
-                12'h300,
-                5'd1,
+                csr_address,
+                source_field,
                 funct3,
-                5'd2,
-                OPCODE_SYSTEM
+                rd_addr,
+                opcode
             };
         end
     endfunction
