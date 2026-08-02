@@ -10,13 +10,9 @@
 
 ## 架构概览
 
-```text
-                         retire / trap
-                              │
-IMem valid-ready ──► IF ─► ID ─► EX ─► MEM ─► WB
-                                          │
-                                  DMem valid-ready
-```
+![RV32IM + Zicsr 五级流水处理器架构](docs/images/rv32-core-architecture.png)
+
+图中仅保留顶层模块与主要数据接口；前递选择、流水停顿/冲刷和重定向仲裁等控制连线均已省略。
 
 - `IF / ID / EX / MEM / WB` 五级流水，单发射、顺序执行；
 - 独立 IMem/DMem request-response 接口，各通道最多一笔在途事务；
