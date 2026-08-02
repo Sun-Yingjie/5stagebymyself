@@ -3,16 +3,14 @@ rtl/idu/rv32_imm_gen.sv
 rtl/execute/rv32_alu.sv
 rtl/csr/rv32_csr_alu.sv
 rtl/csr/rv32_csr_trap.sv
-rtl/idu/rv32_csr_decoder.sv
 rtl/execute/rv32_branch_compare.sv
 rtl/idu/rv32_decoder.sv
 rtl/idu/rv32_regfile.sv
 rtl/core/rv32_forward_unit.sv
 rtl/core/rv32_pipeline_ctrl.sv
 rtl/idu/rv32_idu.sv
-rtl/execute/rv32_exu.sv
 rtl/execute/rv32_mdu.sv
-rtl/execute/rv32_execute_stage.sv
+rtl/execute/rv32_exu.sv
 rtl/ifu/rv32_ifu.sv
 rtl/memory/rv32_lsu.sv
 rtl/memory/rv32_mem_commit.sv

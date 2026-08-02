@@ -1,4 +1,4 @@
-module tb_rv32_execute_stage;
+module tb_rv32_exu_protocol;
     timeunit 1ns;
     timeprecision 1ps;
 
@@ -32,7 +32,7 @@ module tb_rv32_execute_stage;
     int unsigned check_count;
     int unsigned error_count;
 
-    rv32_execute_stage dut (
+    rv32_exu dut (
         .clk                 (clk),
         .rst                 (rst),
         .id_ex_q             (id_ex_q),
@@ -43,7 +43,7 @@ module tb_rv32_execute_stage;
         .id_ex_action        (id_ex_action),
         .ex_mem_action       (ex_mem_action),
         .execute_kill        (execute_kill),
-        .ex_mem_active_candidate(ex_mem_active_candidate),
+        .ex_mem_candidate    (ex_mem_active_candidate),
         .raw_redirect        (raw_redirect),
         .ex_hold_valid       (ex_hold_valid),
         .ex_multicycle_wait  (ex_multicycle_wait),
@@ -63,7 +63,7 @@ module tb_rv32_execute_stage;
 
     initial begin
         #10000ns;
-        $fatal(1, "[FAIL] rv32_execute_stage: global timeout");
+        $fatal(1, "[FAIL] rv32_exu_protocol: global timeout");
     end
 
     task automatic check_condition(
@@ -1015,7 +1015,7 @@ module tb_rv32_execute_stage;
         if (error_count != 0) begin
             $fatal(
                 1,
-                "[FAIL] rv32_execute_stage: %0d errors across %0d cases and %0d checks",
+                "[FAIL] rv32_exu_protocol: %0d errors across %0d cases and %0d checks",
                 error_count,
                 case_count,
                 check_count
@@ -1023,7 +1023,7 @@ module tb_rv32_execute_stage;
         end
 
         $display(
-            "[PASS] rv32_execute_stage: %0d cases and %0d checks passed",
+            "[PASS] rv32_exu_protocol: %0d cases and %0d checks passed",
             case_count,
             check_count
         );

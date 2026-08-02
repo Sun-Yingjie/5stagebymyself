@@ -56,17 +56,17 @@ scripts/run_regression.sh --icarus-only
 BUILD_ROOT=/tmp/rv32-build scripts/run_regression.sh
 ```
 
-当前确定性 RTL 回归结果为：
+本版本冻结前于 2026-08-02 重新执行的确定性 RTL 回归结果为：
 
 ```text
-18/18 unit TBs passed
+17/17 unit TBs passed
 Icarus core:    51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,
                  27/25 MDU req/rsp, 17 interrupts, 25528 checks
 Verilator core: 51/51 scenarios, 364 retirements, 34 traps, 31 DMem requests,
                  27/25 MDU req/rsp, 17 interrupts, 25528 checks
 ```
 
-D5/V1 当前验证结果：
+D5/V1 本版本冻结门禁：
 
 ```text
 D5 release: 64 seeds × 2 simulators = 128/128 PASS, aggregate coverage 0x03ff
@@ -144,7 +144,8 @@ docs/
 
 1～4 描述当前 RTL 已实现事实；`docs/design/01_mret.md`～`04_machine_interrupt.md`
 是已经落入 RTL 的冻结设计合同，`05`～`07` 分别冻结并记录 D5、Spike 差分和 ACT4
-验证。ASIC 前端仍是下一阶段工作。
+验证。本公开版本的证据边界止于 RTL 与前端功能验证，不包含 ASIC 流程、工件或结果
+声明。
 
 ## 已知限制与采用的路线
 
@@ -170,10 +171,12 @@ D0  冻结设计合同
 ```
 
 当前 RTL 已按冻结合同完成到 D4；D5 随机回归、冻结 ACT4 适用集和首条 Spike
-差分 lane 也已完成并通过。下一阶段是 A1 ASIC lint、综合、约束与 STA。D5/V1
-证据扩展了验证深度，但不替代 D0～D4 directed test，也不越界声称完整认证。
+差分 lane 也已完成并通过。本版本作为后续流水级行为重构前的稳定回退基线。
+D5/V1 证据扩展了验证深度，但不替代 D0～D4 directed test，也不越界声称完整认证。
 
-NPU、异构系统、AXI crossbar 和 DMA 仍在独立项目中维护。本处理器项目只在 A1 阶段接入 Core 自身的 ASIC 前端流程；当前不含已完成的工艺映射或 signoff 结果。
+A1 ASIC lint、综合、约束、STA、网表及相关报告属于独立工作流，均不纳入本版本，
+本版本也不声明任何工艺映射或 signoff 结论。NPU、异构系统、AXI crossbar 和 DMA
+继续在独立项目中维护。
 
 ## 许可证
 

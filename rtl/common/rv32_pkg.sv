@@ -1,4 +1,8 @@
 package rv32_pkg;
+    // -------------------------------------------------------------------------
+    // 1. ISA encoding constants
+    // -------------------------------------------------------------------------
+
     // Opcodes
     localparam logic [6:0] OPCODE_LUI       = 7'b011_0111;
     localparam logic [6:0] OPCODE_AUIPC     = 7'b001_0111;
@@ -11,15 +15,13 @@ package rv32_pkg;
     localparam logic [6:0] OPCODE_OP_IMM    = 7'b001_0011;
     localparam logic [6:0] OPCODE_OP        = 7'b011_0011;
     localparam logic [6:0] OPCODE_SYSTEM    = 7'b111_0011;
+
     // Full instruction encodings
     localparam logic [31:0] INSTRUCTION_ECALL  = 32'h0000_0073;
     localparam logic [31:0] INSTRUCTION_EBREAK = 32'h0010_0073;
     localparam logic [31:0] INSTRUCTION_MRET   = 32'h3020_0073;
     localparam logic [31:0] INSTRUCTION_WFI    = 32'h1050_0073;
-    // funct7 encodings
-    localparam logic [6:0] FUNCT7_BASE      = 7'b000_0000;
-    localparam logic [6:0] FUNCT7_MULDIV    = 7'b000_0001;
-    localparam logic [6:0] FUNCT7_SUB_SRA   = 7'b010_0000;
+
     // funct3 encodings
     // arithmetic logic operation
     localparam logic [2:0] FUNCT3_ADD_SUB   = 3'b000;
@@ -57,10 +59,11 @@ package rv32_pkg;
     localparam logic [2:0] FUNCT3_CSRRWI    = 3'b101;
     localparam logic [2:0] FUNCT3_CSRRSI    = 3'b110;
     localparam logic [2:0] FUNCT3_CSRRCI    = 3'b111;
-    // Machine interrupt causes
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_SOFTWARE                = 32'h8000_0003;
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_TIMER                   = 32'h8000_0007;
-    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_EXTERNAL                = 32'h8000_000b;
+
+    // funct7 encodings
+    localparam logic [6:0] FUNCT7_BASE      = 7'b000_0000;
+    localparam logic [6:0] FUNCT7_MULDIV    = 7'b000_0001;
+    localparam logic [6:0] FUNCT7_SUB_SRA   = 7'b010_0000;
 
     // Synchronous exception causes
     localparam logic [31:0] EXCEPTION_CAUSE_INSTRUCTION_ADDRESS_MISALIGNED  = 32'd0;
@@ -72,6 +75,11 @@ package rv32_pkg;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ADDRESS_MISALIGNED        = 32'd6;
     localparam logic [31:0] EXCEPTION_CAUSE_STORE_ACCESS_FAULT              = 32'd7;
     localparam logic [31:0] EXCEPTION_CAUSE_ENVIRONMENT_CALL_M_MODE         = 32'd11;
+
+    // Machine interrupt causes
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_SOFTWARE                = 32'h8000_0003;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_TIMER                   = 32'h8000_0007;
+    localparam logic [31:0] INTERRUPT_CAUSE_MACHINE_EXTERNAL                = 32'h8000_000b;
 
     // Machine CSR addresses (instruction[31:20] in CSR instructions)
     localparam logic [11:0] CSR_ADDR_MSTATUS    = 12'h300;
@@ -93,14 +101,18 @@ package rv32_pkg;
     localparam logic [11:0] CSR_ADDR_MHARTID    = 12'hF14;
     localparam logic [11:0] CSR_ADDR_MCONFIGPTR = 12'hF15;
 
-    // Pipeline control
+    // -------------------------------------------------------------------------
+    // 2. Global control and common types
+    // -------------------------------------------------------------------------
+
+    // Pipeline-register action
     typedef enum logic [1:0] {  // Pipeline-register update action
         PIPE_LOAD           = 2'b00, // update, q_next = candidate
         PIPE_HOLD           = 2'b01, // keep, q_next = q
         PIPE_CLEAR          = 2'b10  // q_next.valid = 0
     } pipe_action_e;
 
-    // Fetch control
+    // Fetch action
     typedef enum logic [1:0] { // Fetch-PC update action
         FETCH_RESET         = 2'b00,    // back to RESET_VECTOR
         FETCH_HOLD          = 2'b01,    // keep current pc
@@ -108,7 +120,24 @@ package rv32_pkg;
         FETCH_REDIRECT      = 2'b11     // pc redirect
     } fetch_action_e;
 
-    // Decode control
+    // Exception information
+    typedef struct packed { // exception info
+        logic        valid;
+        logic [31:0] cause;
+        logic [31:0] value; // mtval
+    } exception_t;
+
+    // Redirect information
+    typedef struct packed {
+        logic        valid;
+        logic [31:0] target;
+    } redirect_t;
+
+    // -------------------------------------------------------------------------
+    // 3. Decode and per-stage control types
+    // -------------------------------------------------------------------------
+
+    // Immediate selection
     typedef enum logic [2:0] { // Immediate encoding selected for extension
         IMM_NONE            = 3'b000,
         IMM_I               = 3'b001, // ALU-immediate, loads, JALR
@@ -118,7 +147,7 @@ package rv32_pkg;
         IMM_J               = 3'b101  // JAL
     } immediate_type_e;
 
-    // Execute control
+    // Primitive ALU operand and operation selection
     typedef enum logic [1:0] { // sel alu opa
         OPA_RS1             = 2'b00,
         OPA_PC              = 2'b01,
@@ -143,6 +172,18 @@ package rv32_pkg;
         ALU_AND             = 4'b1001
     } alu_operation_e;
 
+    // Primitive branch operation
+    typedef enum logic [2:0] { // sel branch compare
+        BR_NONE             = 3'b000,
+        BR_EQ               = 3'b001,
+        BR_NE               = 3'b010,
+        BR_LT               = 3'b011,
+        BR_GE               = 3'b100,
+        BR_LTU              = 3'b101,
+        BR_GEU              = 3'b110
+    } branch_operation_e;
+
+    // Primitive MDU operation
     typedef enum logic [2:0] { // RV32M funct3 encoding
         MDU_MUL             = 3'b000,
         MDU_MULH            = 3'b001,
@@ -154,49 +195,21 @@ package rv32_pkg;
         MDU_REMU            = 3'b111
     } mdu_operation_e;
 
-    typedef struct packed {
-        logic           valid;
-        mdu_operation_e operation;
-    } mdu_ctrl_t;
-
-    typedef enum logic [2:0] { // sel branch compare
-        BR_NONE             = 3'b000,
-        BR_EQ               = 3'b001,
-        BR_NE               = 3'b010,
-        BR_LT               = 3'b011,
-        BR_GE               = 3'b100,
-        BR_LTU              = 3'b101,
-        BR_GEU              = 3'b110
-    } branch_operation_e;
-
+    // Primitive CSR operation
     typedef enum logic [1:0] { // select CSR read-modify-write operation
         CSR_WRITE           = 2'b00,
         CSR_SET             = 2'b01,
         CSR_CLEAR           = 2'b10
     } csr_operation_e;
 
-    typedef struct packed { // decoded Zicsr instruction semantics
-        logic           valid;
-        csr_operation_e operation;
-        logic           use_immediate;
-        logic           read_enable;
-        logic           write_enable;
-    } csr_ctrl_t;
-
-    typedef enum logic [1:0] { // EX operand forwarding source
-        FWD_REG             = 2'b00, // use ID/EX-captured register operand, from GPR or write bypass
-        FWD_EX_MEM          = 2'b01, // use registered EX/MEM producer
-        FWD_MEM_WB          = 2'b10  // use registered MEM/WB producer
-    } forward_select_e;
-
-    // Memory control
+    // Primitive memory operation
     typedef enum logic [1:0] { // load/store width
         MEM_SIZE_BYTE       = 2'b00, // LB, LBU, SB
         MEM_SIZE_HALF       = 2'b01, // LH, LHU, SH
         MEM_SIZE_WORD       = 2'b10  // LW ,SW 
     } memory_size_e;
 
-    // Writeback control
+    // Primitive writeback operation
     typedef enum logic [1:0] {  // sel write back source
         WB_EXEC             = 2'b00,
         WB_LOAD             = 2'b01,
@@ -205,6 +218,19 @@ package rv32_pkg;
     } writeback_select_e;
 
     // Per-stage control packets
+    typedef struct packed { // decoded Zicsr instruction semantics
+        logic           valid;
+        csr_operation_e operation;
+        logic           use_immediate;
+        logic           read_enable;
+        logic           write_enable;
+    } csr_ctrl_t;
+
+    typedef struct packed {
+        logic           valid;
+        mdu_operation_e operation;
+    } mdu_ctrl_t;
+
     typedef struct packed { // execute stage need
         operand_a_select_e operand_a_select;
         operand_b_select_e operand_b_select;
@@ -226,6 +252,7 @@ package rv32_pkg;
         writeback_select_e writeback_select;
     } wb_ctrl_t;
 
+    // Aggregate decode control
     typedef struct packed { // decode stage need
         logic            uses_rs1;
         logic            uses_rs2;
@@ -241,13 +268,10 @@ package rv32_pkg;
         wb_ctrl_t        wb_ctrl;
     } decode_ctrl_t;
 
-    typedef struct packed { // exception info
-        logic        valid;
-        logic [31:0] cause;
-        logic [31:0] value; // mtval
-    } exception_t;
+    // -------------------------------------------------------------------------
+    // 4. Pipeline-register packets
+    // -------------------------------------------------------------------------
 
-    // Pipeline-register packets
     typedef struct packed { // IF/ID reg
         logic        valid;
         logic [31:0] pc;
@@ -269,15 +293,13 @@ package rv32_pkg;
         logic [31:0] rs2_data;
         logic        uses_rs1;
         logic        uses_rs2;
-
         logic [31:0] immediate;
 
-        csr_ctrl_t  csr_ctrl;
         logic [11:0] csr_address;
-        mdu_ctrl_t  mdu_ctrl;
-
         logic        mret;
 
+        mdu_ctrl_t   mdu_ctrl;
+        csr_ctrl_t   csr_ctrl;
         ex_ctrl_t    ex_ctrl;
         mem_ctrl_t   mem_ctrl;
         wb_ctrl_t    wb_ctrl;
@@ -320,15 +342,22 @@ package rv32_pkg;
         exception_t  exception;
     } mem_wb_t;
 
+    // -------------------------------------------------------------------------
+    // 5. Cross-stage interfaces
+    // -------------------------------------------------------------------------
+
+    // Forwarding selection
+    typedef enum logic [1:0] { // EX operand forwarding source
+        FWD_REG             = 2'b00, // use ID/EX-captured register operand, from GPR or write bypass
+        FWD_EX_MEM          = 2'b01, // use registered EX/MEM producer
+        FWD_MEM_WB          = 2'b10  // use registered MEM/WB producer
+    } forward_select_e;
+
+    // Writeback bus
     typedef struct packed {
         logic        valid;
         logic        rd_write_enable;
         logic [4:0]  rd_addr;
         logic [31:0] rd_data;
     } wb_bus_t;
-
-    typedef struct packed {
-        logic        valid;
-        logic [31:0] target;
-    } redirect_t;
 endpackage

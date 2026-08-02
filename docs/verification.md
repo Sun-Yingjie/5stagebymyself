@@ -9,11 +9,11 @@ Spike 差分。各层结论边界独立，不能互相替代。
 
 ### 1.1 Unit TB
 
-Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 18 个：
+Icarus 每次使用唯一 RTL filelist 加一个 unit testbench，当前固定运行 17 个：
 
 ```text
-alu, branch_compare, csr_alu, csr_trap, csr_decoder, decoder,
-execute_stage, exu, forward_unit, idu, ifu, imm_gen, lsu, mem_commit,
+alu, branch_compare, csr_alu, csr_trap, decoder,
+exu, exu_protocol, forward_unit, idu, ifu, imm_gen, lsu, mem_commit,
 mdu, pipeline_ctrl, regfile, wbu
 ```
 
@@ -248,7 +248,7 @@ D5 固定架构程序每次严格比较 17 次 retirement、1 次同步 trap、4
 response-start 时序。到达最后一个期望事件后，TB 继续运行 `MAX_STALL+8` 拍，要求
 LSU、DMem、MDU 和 held-EX 静默，只允许 trap handler 后的无副作用 NOP 退休。
 
-2026-07-27 的最终 campaign：
+2026-08-02 在本版本冻结前重新执行的 campaign：
 
 | Campaign | 配置 | 结果 | 关键证据 |
 |---|---|---:|---|
@@ -256,10 +256,8 @@ LSU、DMem、MDU 和 held-EX 静默，只允许 trap handler 后的无副作用 
 | high-wait | seed `1,17,20260727,a5a55a5a`，stall 85%，cap 32，双模拟器 | 8/8 PASS | 每侧 cycle 为 382/447/327/362；coverage `03ff` |
 | timeout replay | seed 1，timeout 1，Icarus | 预期 FAIL 并可复现 | 原始与 replay 均为 cycle 17、state `e026d14a`、coverage `0001` |
 
-release `run_id=7471b1bbb92d45889682db33335ce97a`，high-wait
-`run_id=52cda6bdc5844bc7839f0a1b3ca73d59`。两批生成工件保存在被 Git 忽略的
-`out/d5/`，均满足 `result_integrity_errors=[]`、`cross_sim_mismatches=[]`、零
-max-streak 越界。runner 将 requested/reported seed、完整
+两批生成工件保存在 Git 仓库外，均满足 `result_integrity_errors=[]`、
+`cross_sim_mismatches=[]`、零 max-streak 越界。runner 将 requested/reported seed、完整
 结果 schema、重复/缺失 simulator-seed key 和固定架构计数作为硬门禁；相关负测位于
 `verification/random/test_runner_integrity.py`。完整合同见
 [D5 随机回归](design/05_random_regression.md)。
@@ -278,9 +276,8 @@ selected=53 generated=53 run=53 pass=53 fail=0 skip=0
 53 个 ELF 的 PT_LOAD 均通过 256 KiB 窗口和 mailbox 边界检查。最大项 `I-jal-00`
 占 203,808 bytes，距 `tohost` 仍有 58,320 bytes。该结果只证明冻结适用集，不包括
 完整 Sm、Zicntr、interrupt、MRET/counter 时序或正式 RVCP 认证。详见
-[ACT4 冻结回归](design/07_act4_validation.md)。最终 fresh-all 报告的
-`run_id=2cfc500f3ec147c999a70684a0fdcbab`；大型 ELF/trace 工件保存在本机任务临时目录，
-不纳入 Git。
+[ACT4 冻结回归](design/07_act4_validation.md)。本版本冻结门禁使用全新工作目录重新
+生成并运行全部 53 项；大型 ELF/trace 工件保存在 Git 仓库外，不纳入发布。
 
 ### 7.2 Spike 差分
 
@@ -289,9 +286,8 @@ selected=53 generated=53 run=53 pass=53 fail=0 skip=0
 `first_divergence=null`。comparator 负测篡改第 2 个寄存器写事件后，在 event index 1
 稳定报告首个差异。
 
-最终 delivery smoke 的 comparison、first-divergence 和 manifest 使用同一个
-`run_id=e7d8e0892fc54f588fbd7c05b92c9172`；ELF/VVP/trace 工件保存在本机任务临时目录，
-不纳入 Git。
+本版本冻结门禁重新构建 ELF，并生成同一次运行的 comparison、first-divergence 和
+manifest；ELF/VVP/trace 工件保存在 Git 仓库外，不纳入发布。
 
 Spike reset `mtvec=0`，而 DUT program TB 的 reset `mtvec=0x80000300`，因此当前 lane
 明确拒绝任何 trap；MRET、同步 trap、interrupt、counter 值、WFI 睡眠和访问错误均不
@@ -303,7 +299,8 @@ Spike reset `mtvec=0`，而 DUT program TB 的 reset `mtvec=0x80000300`，因此
 - ACT4 53 项不是完整特权架构或正式认证证书；
 - Spike 差分只有一个确定性 trap-free 程序，尚无随机程序生成、失败最小化或 trap
   共同初始化；
-- 尚未开展 A1 ASIC lint、综合、时钟约束与 STA。
+- 本版本不包含、不声明 A1 ASIC lint、综合、时钟约束、STA、网表或 signoff 结果；
+  这些内容需要独立的输入、工具和证据边界。
 
 ACT4/差分验证架构语义，不能替代 directed TB 对 hazard、flush、backpressure、event
 ordering 和副作用抑制的内部检查。

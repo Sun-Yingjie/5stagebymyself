@@ -72,10 +72,9 @@ UNIT_NAMES=(
     branch_compare
     csr_alu
     csr_trap
-    csr_decoder
     decoder
-    execute_stage
     exu
+    exu_protocol
     forward_unit
     idu
     ifu

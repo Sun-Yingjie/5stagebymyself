@@ -225,7 +225,7 @@ module rv32_core #(
 
     assign execute_kill = trap_take || interrupt_take || mret_commit;
 
-    rv32_execute_stage u_execute_stage (
+    rv32_exu u_exu (
         .clk                     (clk),
         .rst                     (rst),
         .id_ex_q                 (id_ex_q),
@@ -236,7 +236,7 @@ module rv32_core #(
         .id_ex_action            (id_ex_action),
         .ex_mem_action           (ex_mem_action),
         .execute_kill            (execute_kill),
-        .ex_mem_active_candidate (ex_mem_candidate),
+        .ex_mem_candidate        (ex_mem_candidate),
         .raw_redirect            (raw_redirect),
         .ex_hold_valid           (ex_hold_valid),
         .ex_multicycle_wait      (ex_multicycle_wait),

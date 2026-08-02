@@ -40,7 +40,7 @@
 
 post-commit 与 empty-pipeline interrupt 分开仲裁，是因为前者必须让当前 MEM 指令进入 MEM/WB，后者没有可提交指令。MRET 后若恢复出的 MIE 立即使 pending interrupt eligible，按 post-commit interrupt 行处理，不先取返回目标指令。
 
-`rv32_execute_stage` 根据当前 M 指令和 `rv32_mdu` response 状态形成
+`rv32_exu` 根据当前 M 指令和 `rv32_mdu` response 状态形成
 `ex_multicycle_wait`。M 指令在 ID/EX 保持，EX/MEM 插入 bubble，较老 MEM/WB 继续
 排空；完成的 MDU response 若遇到较老 MEM wait，会保持稳定直到可以装载 EX/MEM。
 
@@ -73,7 +73,7 @@ load 或 CSR 指令位于 EX，且下一条 ID 指令读取其 `rd` 时，`late_
 
 DMem request 受反压时，ID/EX 必须保持。但是 ID/EX 内保存的是译码时的寄存器值，
 前递源可能在等待期间离开流水。为保证 stalled request payload 稳定，
-`rv32_execute_stage` 在第一次 HOLD 时保存已完成前递的 EX/MEM candidate 和 raw
+`rv32_exu` 在第一次 HOLD 时保存已完成前递的 EX/MEM candidate 和 raw
 redirect；解除 HOLD 前始终使用该快照。M 指令由 MDU 自己捕获已前递操作数并保持
 response，不进入普通 EX hold 快照。
 
