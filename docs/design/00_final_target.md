@@ -1,9 +1,14 @@
 # 最终处理器设计目标
 
+> **v0.6 状态说明：** 本文档是 D0 阶段形成的历史冻结合同。D0～D5/V1 已在
+> `v0.6-rv32im-zicsr-rtl` 基线中实现并完成限定范围验证；当前实现事实以仓库根目录
+> `README.md`、`docs/architecture.md`、`docs/pipeline.md`、`docs/csr_trap.md` 和
+> `docs/verification.md` 为准。A1 及后续优化不再作为本仓库的实施路线。
+
 ## 1. 文档地位
 
-本文档冻结本项目的最终实现目标和后续增量边界。它描述“准备实现什么”，不表示
-相关能力已经存在。当前已实现事实仍以仓库根目录的 `README.md`、
+本文档记录本项目在 D0 阶段冻结的最终实现目标和增量边界。它用于解释各阶段为何
+这样设计，不单独作为当前能力证明。当前已实现事实仍以仓库根目录的 `README.md`、
 `docs/architecture.md`、`docs/pipeline.md`、`docs/csr_trap.md` 和
 `docs/verification.md` 为准。
 
