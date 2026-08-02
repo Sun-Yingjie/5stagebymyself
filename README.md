@@ -1,5 +1,11 @@
 # RV32 五级流水处理器核
 
+> [!IMPORTANT]
+> **维护状态：功能冻结。** `main` 保留已经验证的 RV32IM + Zicsr RTL 基线，正式
+> 版本为 [v0.6 RV32IM + Zicsr RTL Baseline](https://github.com/Sun-Yingjie/5stagebymyself/releases/tag/v0.6-rv32im-zicsr-rtl)。
+> 本仓库不再规划新的流水级、性能、NPU 或 ASIC 功能开发；后续优化不属于本冻结
+> 仓库的维护范围。
+
 这是一个面向数字 IC、处理器微架构学习与实习展示的 32 位 RISC-V 处理器核。项目当前聚焦一件事：把一颗单发射、顺序执行的五级流水 Core 做成可阅读、可运行、可验证的完整 RTL 工程。
 
 ## 架构概览
@@ -123,7 +129,7 @@ docs/
 ├── pipeline.md              流水推进、冒险、反压与 flush
 ├── csr_trap.md              CSR、counter、trap 与 Machine interrupt
 ├── verification.md          验证结构、结果、复现与缺口
-└── design/                  已冻结的最终目标与后续增量设计合同
+└── design/                  已冻结的设计与验证合同
     ├── 00_final_target.md
     ├── 01_mret.md
     ├── 02_machine_counters.md
@@ -147,7 +153,7 @@ docs/
 验证。本公开版本的证据边界止于 RTL 与前端功能验证，不包含 ASIC 流程、工件或结果
 声明。
 
-## 已知限制与采用的路线
+## 冻结范围与历史里程碑
 
 - 尚未实现 RV32A/F/C/V、`FENCE.I`、完整 privilege/PMP/debug、vectored `mtvec`、Cache、MMU、Linux、多核和一致性；
 - 协处理器端口在 RTL 中保留，但当前固定关闭；
@@ -157,7 +163,7 @@ docs/
   时序；
 - Spike 差分当前只覆盖一个 trap-free smoke ELF，不是随机程序或完整 ISA 差分。
 
-项目已采用 [最终处理器设计目标](docs/design/00_final_target.md)，后续依赖顺序固定为：
+本项目按 [最终处理器设计目标](docs/design/00_final_target.md) 完成了以下历史路线：
 
 ```text
 D0  冻结设计合同
@@ -167,16 +173,16 @@ D0  冻结设计合同
  → D4  精确 Machine interrupt
  → D5  最终设计冻结与 directed/random regression
  → V1  ACT4 与参考模型差分
- → A1  ASIC lint、综合、约束与 STA
 ```
 
-当前 RTL 已按冻结合同完成到 D4；D5 随机回归、冻结 ACT4 适用集和首条 Spike
-差分 lane 也已完成并通过。本版本作为后续流水级行为重构前的稳定回退基线。
-D5/V1 证据扩展了验证深度，但不替代 D0～D4 directed test，也不越界声称完整认证。
+`v0.6-rv32im-zicsr-rtl` 是上述 D0～D5/V1 工作的规范冻结版本。D5/V1 证据扩展了
+验证深度，但不替代 D0～D4 directed test，也不越界声称完整认证。`main` 是唯一
+规范分支；发布标签不可变，已经合并或被取代的开发分支不再长期保留，本仓库不再
+承载新的功能分支。
 
-A1 ASIC lint、综合、约束、STA、网表及相关报告属于独立工作流，均不纳入本版本，
-本版本也不声明任何工艺映射或 signoff 结论。NPU、异构系统、AXI crossbar 和 DMA
-继续在独立项目中维护。
+A1 ASIC lint、综合、约束、STA、网表及相关报告未进入本冻结仓库，本版本也不声明
+任何工艺映射或 signoff 结论。流水级/性能优化以及 NPU、异构系统、AXI crossbar
+和 DMA 属于独立项目范围。
 
 ## 许可证
 
